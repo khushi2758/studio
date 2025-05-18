@@ -28,13 +28,24 @@ export interface ChatMessageReaction {
   emoji: string; 
 }
 
+export interface PollOption {
+  id: string; // e.g., 'option1', 'option2'
+  imageDataUri: string;
+  voteCount: number;
+}
+
 export interface ChatMessage {
   id: string;
   roomId: string;
   nickname: string;
   text?: string; // Text is now optional
   timestamp: string;
-  type: 'message' | 'image';
+  type: 'message' | 'image' | 'poll';
   imageDataUri?: string; // For image messages (stored as data URI)
   reactions?: ChatMessageReaction[];
+  // For polls
+  pollQuestion?: string;
+  pollOptions?: PollOption[];
+  // Stores { nickname: optionIdVotedFor } for this poll
+  pollVoters?: { [nickname: string]: string }; 
 }

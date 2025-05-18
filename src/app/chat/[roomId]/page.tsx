@@ -4,22 +4,22 @@
 import { useState, useEffect, useRef, type FormEvent, type ChangeEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import NextImage from 'next/image'; // Renamed to avoid conflict with local Image variable
+import NextImage from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import type { ChatMessage, ChatMessageReaction } from '@/lib/types';
-import { ArrowLeft, Send, User, ImagePlus, XCircle, Heart } from 'lucide-react';
+import type { ChatMessage, ChatMessageReaction, PollOption } from '@/lib/types';
+import { ArrowLeft, Send, User, ImagePlus, XCircle, Heart, Vote, ListPlus, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Textarea } from '@/components/ui/textarea'; // Added for poll question
 
-const MAX_IMAGE_SIZE_MB = 2; // Max image size in MB for upload
+const MAX_IMAGE_SIZE_MB = 2; 
 const MAX_RECENT_ROOMS = 5;
 const RECENT_ROOMS_KEY = 'aesthefit-recentChatRooms';
 
-// Helper function to convert file to data URI
 const fileToDataUri = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -44,6 +44,15 @@ export default function ChatRoomPage() {
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
 
+  // Poll creation state
+  const [isCreatingPoll, setIsCreatingPoll] = useState(false);
+  const [pollQuestionInput, setPollQuestionInput] = useState('');
+  const [pollOptionFiles, setPollOptionFiles] = useState<[File | null, File | null]>([null, null]);
+  const [pollOptionPreviews, setPollOptionPreviews] = useState<[string | null, string | null]>([null, null]);
+  const pollOption1FileInputRef = useRef<HTMLInputElement>(null);
+  const pollOption2FileInputRef = useRef<HTMLInputElement>(null);
+
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -64,26 +73,20 @@ export default function ChatRoomPage() {
         } catch (error) {
           console.error("Error parsing stored messages:", error);
           toast({ title: "Error loading chat", description: "Could not load previous messages.", variant: "destructive"});
-          localStorage.removeItem(`chatRoom-${roomId}-messages`); // Clear corrupted data
+          localStorage.removeItem(`chatRoom-${roomId}-messages`); 
         }
       }
 
-      // Save visited room ID
       try {
         const recentRoomsRaw = localStorage.getItem(RECENT_ROOMS_KEY);
         let recentRooms: string[] = recentRoomsRaw ? JSON.parse(recentRoomsRaw) : [];
-        // Remove current room ID if it exists to move it to the front
         recentRooms = recentRooms.filter(id => id !== roomId);
-        // Add current room ID to the beginning
         recentRooms.unshift(roomId);
-        // Limit the number of recent rooms
         recentRooms = recentRooms.slice(0, MAX_RECENT_ROOMS);
         localStorage.setItem(RECENT_ROOMS_KEY, JSON.stringify(recentRooms));
       } catch (error) {
         console.error("Error saving recent room ID:", error);
-        // Optionally, notify the user if this is critical
       }
-
     }
   }, [roomId, toast]);
 
@@ -96,7 +99,7 @@ export default function ChatRoomPage() {
         if (error instanceof DOMException && error.name === 'QuotaExceededError') {
           toast({
             title: "Storage Limit Reached",
-            description: "Cannot save more messages due to browser storage limits. Older messages or large images might be lost.",
+            description: "Cannot save more messages due to browser storage limits. Older messages, images or polls might be lost.",
             variant: "destructive",
             duration: 7000, 
           });
@@ -124,10 +127,10 @@ export default function ChatRoomPage() {
   useEffect(scrollToBottom, [messages]);
   
   useEffect(() => {
-    if (!isLoadingNickname && nickname && inputRef.current) {
+    if (!isLoadingNickname && nickname && inputRef.current && !isCreatingPoll) {
       inputRef.current.focus();
     }
-  }, [isLoadingNickname, nickname]);
+  }, [isLoadingNickname, nickname, isCreatingPoll]);
 
   const handleSetNickname = (e: FormEvent) => {
     e.preventDefault();
@@ -142,7 +145,7 @@ export default function ChatRoomPage() {
     }
   };
 
-  const handleImageInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleSingleImageInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       if (file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024) {
@@ -163,7 +166,7 @@ export default function ChatRoomPage() {
     setSelectedImageFile(null);
     setSelectedImagePreview(null);
     if (fileInputRef.current) {
-      fileInputRef.current.value = ''; // Reset file input
+      fileInputRef.current.value = ''; 
     }
   };
 
@@ -205,7 +208,7 @@ export default function ChatRoomPage() {
         text: currentMessage.trim(),
         timestamp: new Date().toISOString(),
         type: 'message',
-        reactions: [], // Text messages can also have reactions in theory, initializing
+        reactions: [],
       };
     }
 
@@ -225,18 +228,106 @@ export default function ChatRoomPage() {
           );
 
           if (userReactionIndex > -1) {
-            // User already reacted with this emoji, remove it
             return {
               ...msg,
               reactions: existingReactions.filter((_, index) => index !== userReactionIndex),
             };
           } else {
-            // Add new reaction
             return {
               ...msg,
               reactions: [...existingReactions, { nickname, emoji }],
             };
           }
+        }
+        return msg;
+      })
+    );
+  };
+
+  // Poll creation logic
+  const handlePollImageChange = (index: 0 | 1, e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024) {
+        toast({ title: "Image too large", description: `Max ${MAX_IMAGE_SIZE_MB}MB per option.`, variant: "destructive" });
+        return;
+      }
+      const newFiles = [...pollOptionFiles] as [File | null, File | null];
+      newFiles[index] = file;
+      setPollOptionFiles(newFiles);
+
+      const newPreviews = [...pollOptionPreviews] as [string | null, string | null];
+      newPreviews[index] = URL.createObjectURL(file);
+      setPollOptionPreviews(newPreviews);
+    }
+  };
+
+  const handleSendPoll = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!pollQuestionInput.trim() || !pollOptionFiles[0] || !pollOptionFiles[1] || !nickname) {
+      toast({ title: "Incomplete Poll", description: "Please provide a question and two images for the poll.", variant: "destructive" });
+      return;
+    }
+    toast({
+      title: "Poll Creation Notice",
+      description: "Storing polls with images in chat uses browser local storage and has significant limitations. Many polls or large images may cause storage issues.",
+      variant: "default",
+      duration: 9000,
+    });
+
+    try {
+      const option1DataUri = await fileToDataUri(pollOptionFiles[0]!);
+      const option2DataUri = await fileToDataUri(pollOptionFiles[1]!);
+
+      const pollOptions: PollOption[] = [
+        { id: 'option1', imageDataUri: option1DataUri, voteCount: 0 },
+        { id: 'option2', imageDataUri: option2DataUri, voteCount: 0 },
+      ];
+
+      const newPollMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        roomId,
+        nickname,
+        timestamp: new Date().toISOString(),
+        type: 'poll',
+        pollQuestion: pollQuestionInput.trim(),
+        pollOptions,
+        pollVoters: {},
+      };
+
+      setMessages(prev => [...prev, newPollMessage]);
+      // Reset poll form
+      setIsCreatingPoll(false);
+      setPollQuestionInput('');
+      setPollOptionFiles([null, null]);
+      setPollOptionPreviews([null, null]);
+      if (pollOption1FileInputRef.current) pollOption1FileInputRef.current.value = '';
+      if (pollOption2FileInputRef.current) pollOption2FileInputRef.current.value = '';
+
+    } catch (error) {
+      console.error("Error creating poll:", error);
+      toast({ title: "Poll Creation Error", description: "Could not process poll images.", variant: "destructive" });
+    }
+  };
+
+  const handleVote = (messageId: string, optionIdToVoteFor: string) => {
+    if (!nickname) return;
+
+    setMessages(prevMessages => 
+      prevMessages.map(msg => {
+        if (msg.id === messageId && msg.type === 'poll' && msg.pollOptions && msg.pollVoters) {
+          // Check if user already voted in this poll
+          if (msg.pollVoters[nickname]) {
+            toast({ title: "Already Voted", description: "You can only vote once per poll.", variant: "default" });
+            return msg; // User has already voted
+          }
+
+          const updatedOptions = msg.pollOptions.map(opt => 
+            opt.id === optionIdToVoteFor ? { ...opt, voteCount: opt.voteCount + 1 } : opt
+          );
+          const updatedVoters = { ...msg.pollVoters, [nickname]: optionIdToVoteFor };
+
+          return { ...msg, pollOptions: updatedOptions, pollVoters: updatedVoters };
         }
         return msg;
       })
@@ -305,7 +396,7 @@ export default function ChatRoomPage() {
               <CardDescription className="mt-1 text-xs sm:text-sm">
                 Chatting as: <span className="font-semibold text-primary">{nickname}</span>
                 <span className="text-xs text-muted-foreground/80 block sm:inline sm:ml-1">
-                   (Messages & images are local to this browser)
+                   (Messages, images & polls are local to this browser)
                 </span>
               </CardDescription>
             </div>
@@ -318,30 +409,78 @@ export default function ChatRoomPage() {
         </CardHeader>
         
         <ScrollArea className="flex-grow p-4 bg-muted/20">
-          <div className="space-y-4">
+          <div className="space-y-6"> {/* Increased space-y for polls */}
             {messages.map((msg) => {
-              const heartReactions = msg.reactions?.filter(r => r.emoji === '❤️').length || 0;
-              const userHasHearted = msg.reactions?.some(r => r.nickname === nickname && r.emoji === '❤️');
+              const isMyMessage = msg.nickname === nickname;
+              const userHasHeartedImage = msg.type === 'image' && msg.reactions?.some(r => r.nickname === nickname && r.emoji === '❤️');
 
+              if (msg.type === 'poll') {
+                const userVotedOptionId = msg.pollVoters?.[nickname];
+                return (
+                  <div key={msg.id} className={cn("flex items-end gap-2 max-w-[95%] sm:max-w-[85%]", isMyMessage ? "ml-auto flex-row-reverse" : "mr-auto flex-row")}>
+                    <User className="h-8 w-8 text-muted-foreground self-start shrink-0 rounded-full bg-background p-1 border" title={msg.nickname}/>
+                    <div className={cn("p-4 rounded-xl shadow-md w-full", isMyMessage ? "bg-primary text-primary-foreground rounded-br-none" : "bg-card text-card-foreground rounded-bl-none border")}>
+                      <p className="text-xs text-muted-foreground/80 mb-1">
+                        {isMyMessage ? "You" : msg.nickname} (Poll)
+                        <span className="ml-2 text-xs text-muted-foreground/60">
+                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </p>
+                      <p className="font-semibold mb-3 text-base">{msg.pollQuestion}</p>
+                      <div className="space-y-3">
+                        {msg.pollOptions?.map(option => {
+                          const hasVotedForThisOption = userVotedOptionId === option.id;
+                          return (
+                            <Card 
+                              key={option.id} 
+                              className={cn(
+                                "overflow-hidden cursor-pointer hover:shadow-lg transition-shadow",
+                                hasVotedForThisOption && "ring-2 ring-offset-1 ring-accent",
+                                userVotedOptionId && !hasVotedForThisOption && "opacity-70 cursor-not-allowed"
+                              )}
+                              onClick={() => !userVotedOptionId && handleVote(msg.id, option.id)}
+                              role="button"
+                              aria-pressed={hasVotedForThisOption}
+                            >
+                              <CardContent className="p-2">
+                                <div className="relative aspect-video w-full rounded-md overflow-hidden mb-2 bg-muted">
+                                  <NextImage src={option.imageDataUri} alt={`Poll option ${option.id}`} layout="fill" objectFit="contain" data-ai-hint="poll option"/>
+                                </div>
+                                <div className="flex justify-between items-center text-sm">
+                                  <span>Votes: {option.voteCount}</span>
+                                  {hasVotedForThisOption && <CheckCircle className="h-5 w-5 text-accent"/>}
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Regular message or image
+              const heartReactions = msg.reactions?.filter(r => r.emoji === '❤️').length || 0;
               return (
                 <div
                   key={msg.id}
                   className={cn(
                     "flex items-end gap-2 max-w-[85%]",
-                    msg.nickname === nickname ? "ml-auto flex-row-reverse" : "mr-auto flex-row"
+                    isMyMessage ? "ml-auto flex-row-reverse" : "mr-auto flex-row"
                   )}
                 >
                   <User className="h-8 w-8 text-muted-foreground self-start shrink-0 rounded-full bg-background p-1 border" title={msg.nickname}/>
                   <div
                     className={cn(
                       "p-3 rounded-xl shadow-md",
-                      msg.nickname === nickname
+                      isMyMessage
                         ? "bg-primary text-primary-foreground rounded-br-none"
                         : "bg-card text-card-foreground rounded-bl-none border"
                     )}
                   >
                     <p className="text-xs text-muted-foreground/80 mb-0.5">
-                      {msg.nickname === nickname ? "You" : msg.nickname}
+                      {isMyMessage ? "You" : msg.nickname}
                       <span className="ml-2 text-xs text-muted-foreground/60">
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
@@ -364,10 +503,10 @@ export default function ChatRoomPage() {
                         <Button 
                           variant="ghost" 
                           size="sm" 
-                          className={cn("p-1 h-auto", userHasHearted ? "text-red-500" : "text-muted-foreground hover:text-red-500")}
+                          className={cn("p-1 h-auto", userHasHeartedImage ? "text-red-500" : "text-muted-foreground hover:text-red-500")}
                           onClick={() => handleReaction(msg.id, '❤️')}
                         >
-                          <Heart className={cn("h-4 w-4", userHasHearted ? "fill-red-500" : "")} />
+                          <Heart className={cn("h-4 w-4", userHasHeartedImage ? "fill-red-500" : "")} />
                           <span className="ml-1 text-xs">{heartReactions > 0 ? heartReactions : ''}</span>
                         </Button>
                       </div>
@@ -378,61 +517,115 @@ export default function ChatRoomPage() {
             })}
              {messages.length === 0 && (
                 <div className="text-center text-muted-foreground py-10">
-                    No messages yet. Start the conversation or send an image!
+                    No messages yet. Start the conversation, send an image, or create a poll!
                 </div>
             )}
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
 
-        <CardFooter className="p-4 border-t bg-background">
-          {selectedImagePreview && (
-            <div className="mb-2 p-2 border rounded-md relative w-20 h-20 sm:w-24 sm:h-24"> {/* Slightly smaller on mobile */}
-              <NextImage src={selectedImagePreview} alt="Selected preview" layout="fill" objectFit="cover" className="rounded-md" data-ai-hint="image preview"/>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/80"
-                onClick={clearSelectedImage}
-              >
-                <XCircle className="h-4 w-4" />
-              </Button>
-            </div>
+        <CardFooter className="p-4 border-t bg-background flex flex-col items-start">
+          {/* Poll Creation Form */}
+          {isCreatingPoll && (
+            <form onSubmit={handleSendPoll} className="w-full mb-4 p-4 border rounded-lg shadow-sm bg-muted/50 space-y-4">
+              <h3 className="text-lg font-semibold text-center">Create New Poll</h3>
+              <div>
+                <Label htmlFor="poll-question">Poll Question</Label>
+                <Textarea 
+                  id="poll-question"
+                  value={pollQuestionInput}
+                  onChange={(e) => setPollQuestionInput(e.target.value)}
+                  placeholder="What's your fashion question?"
+                  required
+                  className="mt-1 bg-background"
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[0, 1].map(index => (
+                  <div key={index} className="space-y-1">
+                    <Label htmlFor={`poll-option-${index + 1}`}>Image Option ${index + 1}</Label>
+                    <Input 
+                      id={`poll-option-${index + 1}`}
+                      type="file"
+                      accept="image/png, image/jpeg, image/webp"
+                      onChange={(e) => handlePollImageChange(index as 0 | 1, e)}
+                      ref={index === 0 ? pollOption1FileInputRef : pollOption2FileInputRef}
+                      required
+                      className="file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 bg-background"
+                    />
+                    {pollOptionPreviews[index] && (
+                      <div className="mt-2 w-full aspect-video relative rounded-md overflow-hidden border bg-background">
+                        <NextImage src={pollOptionPreviews[index]!} alt={`Preview Option ${index + 1}`} layout="fill" objectFit="contain" data-ai-hint="poll preview"/>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button type="button" variant="outline" onClick={() => setIsCreatingPoll(false)}>Cancel</Button>
+                <Button type="submit">Submit Poll</Button>
+              </div>
+            </form>
           )}
-          <form onSubmit={handleSendMessage} className="flex w-full items-center space-x-2">
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleImageInputChange} 
-              accept="image/png, image/jpeg, image/webp" 
-              className="hidden"
-            />
-            <Button 
-              variant="outline" 
-              size="icon" 
-              type="button" 
-              onClick={() => fileInputRef.current?.click()}
-              title="Add Image"
-            >
-              <ImagePlus className="h-5 w-5" />
-            </Button>
-            <Input
-              ref={inputRef}
-              value={currentMessage}
-              onChange={(e) => setCurrentMessage(e.target.value)}
-              placeholder="Type your message or add an image..."
-              className="flex-1"
-              autoComplete="off"
-            />
-            <Button type="submit" size="icon" disabled={(!currentMessage.trim() && !selectedImageFile) || !nickname} aria-label="Send message">
-              <Send className="h-5 w-5" />
-            </Button>
-          </form>
+
+          {/* Message Input Area */}
+          {!isCreatingPoll && (
+            <>
+            {selectedImagePreview && (
+                <div className="mb-2 p-2 border rounded-md relative w-20 h-20 sm:w-24 sm:h-24">
+                <NextImage src={selectedImagePreview} alt="Selected preview" layout="fill" objectFit="cover" className="rounded-md" data-ai-hint="image preview"/>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/80"
+                    onClick={clearSelectedImage}
+                >
+                    <XCircle className="h-4 w-4" />
+                </Button>
+                </div>
+            )}
+            <form onSubmit={handleSendMessage} className="flex w-full items-center space-x-2">
+                <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleSingleImageInputChange} 
+                accept="image/png, image/jpeg, image/webp" 
+                className="hidden"
+                />
+                <Button 
+                variant="outline" 
+                size="icon" 
+                type="button" 
+                onClick={() => fileInputRef.current?.click()}
+                title="Add Image"
+                >
+                <ImagePlus className="h-5 w-5" />
+                </Button>
+                <Button 
+                variant="outline" 
+                size="icon" 
+                type="button" 
+                onClick={() => setIsCreatingPoll(true)}
+                title="Create Poll"
+                >
+                <ListPlus className="h-5 w-5" />
+                </Button>
+                <Input
+                ref={inputRef}
+                value={currentMessage}
+                onChange={(e) => setCurrentMessage(e.target.value)}
+                placeholder="Type your message, add an image, or create a poll..."
+                className="flex-1"
+                autoComplete="off"
+                />
+                <Button type="submit" size="icon" disabled={(!currentMessage.trim() && !selectedImageFile) || !nickname} aria-label="Send message">
+                <Send className="h-5 w-5" />
+                </Button>
+            </form>
+            </>
+          )}
         </CardFooter>
       </Card>
     </div>
   );
 }
-    
-
-    
