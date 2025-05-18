@@ -4,7 +4,8 @@ import {Geist} from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import Header from '@/components/app/Header';
-import { AuthProvider } from '@/context/AuthContext'; // Import AuthProvider
+import Footer from '@/components/app/Footer'; // Import Footer
+import { AuthProvider } from '@/context/AuthContext';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -23,12 +24,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={geistSans.variable}>
-      <body className="antialiased font-sans">
-        <AuthProvider> {/* Wrap with AuthProvider */}
+      <body className="antialiased font-sans flex flex-col min-h-screen"> {/* Ensure full height and flex column */}
+        <AuthProvider>
           <Header />
-          <main className="flex-grow">
+          <main className="flex-grow"> {/* Main content will take available space */}
             {children}
           </main>
+          <Footer /> {/* Add Footer here */}
           <Toaster />
         </AuthProvider>
       </body>
