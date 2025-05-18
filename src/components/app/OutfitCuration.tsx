@@ -116,10 +116,10 @@ const OutfitCuration: FC<OutfitCurationProps> = ({ clothingItems, personImage, o
               <div className="w-full aspect-[3/4] relative rounded-md overflow-hidden border mx-auto max-w-xs bg-muted">
                 <Image 
                   src={curatedOutfitDetails.imageUri} 
-                  alt="AI Generated Outfit" 
+                  alt="AI Generated Outfit on a figure" 
                   layout="fill" 
                   objectFit="contain"
-                  data-ai-hint="fashion model"
+                  data-ai-hint="outfit mannequin"
                 />
               </div>
             )}

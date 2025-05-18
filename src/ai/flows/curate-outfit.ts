@@ -82,15 +82,13 @@ const curateOutfitFlow = ai.defineFlow(
 
     // 2. Prepare prompt for image generation
     const imagePromptElements: (GenkitTextPart | GenkitMediaPart)[] = [
-      { text: `Generate a high-quality, visually appealing fashion model style image. A person should be wearing the following outfit: "${textOutput.outfitSuggestion}". The image should preferably be a full-body shot or at least show the outfit clearly.` }
+      {
+        text: `Generate a high-quality, visually appealing image displaying the following outfit: "${textOutput.outfitSuggestion}". The outfit should be shown on a simple, featureless mannequin or a generic figure, not a realistic person or fashion model. Focus on clearly showcasing the clothing items. The background should be neutral or simple studio-like. Ensure the entire outfit is visible.`
+      }
+      // The input.personImageDataUri is intentionally not added here for image generation,
+      // as the request is to display the outfit on a figure/mannequin.
+      // It is still available to the textSuggestionPrompt if needed there.
     ];
-
-    if (input.personImageDataUri) {
-      imagePromptElements.push({ text: "Use the following image as a reference for the person's appearance, style, or body type. Generate a new person wearing the described outfit, inspired by the reference if applicable, not an exact copy or edit of the reference image:" });
-      imagePromptElements.push({ media: { url: input.personImageDataUri } });
-    } else {
-      imagePromptElements.push({ text: "The person in the generated image can be any fashion model."});
-    }
 
     // 3. Generate image
     const { media, text: imageGenText } = await ai.generate({
@@ -119,3 +117,4 @@ const curateOutfitFlow = ai.defineFlow(
     };
   }
 );
+

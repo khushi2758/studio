@@ -28,10 +28,10 @@ const OutfitCard: FC<OutfitCardProps> = ({ outfit, onRemove }) => {
              {outfit.generatedOutfitImageUri ? (
                 <Image 
                   src={outfit.generatedOutfitImageUri} 
-                  alt={`AI generated outfit for ${outfit.occasion}`} 
+                  alt={`AI generated outfit for ${outfit.occasion} on a figure`} 
                   layout="fill" 
                   objectFit="contain" 
-                  data-ai-hint="fashion model"
+                  data-ai-hint="outfit mannequin"
                 />
              ) : (
                 <Image 
@@ -39,7 +39,7 @@ const OutfitCard: FC<OutfitCardProps> = ({ outfit, onRemove }) => {
                   alt="Outfit placeholder" 
                   width={96} 
                   height={128} 
-                  data-ai-hint="fashion model"
+                  data-ai-hint="outfit display"
                 />
              )}
           </div>
@@ -75,3 +75,4 @@ const OutfitCard: FC<OutfitCardProps> = ({ outfit, onRemove }) => {
 };
 
 export default OutfitCard;
+
