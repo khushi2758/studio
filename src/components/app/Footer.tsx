@@ -1,5 +1,5 @@
 
-"use client"; // Required for new Date().getFullYear() in a server component context if it were not for client components
+"use client"; 
 
 import type { FC } from 'react';
 import Link from 'next/link';
