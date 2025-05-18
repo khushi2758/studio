@@ -67,7 +67,7 @@ const chatWithBotFlow = ai.defineFlow(
     messagesForPrompt.push({ role: 'user', content: [{ text: input.userInput }] });
 
     const response = await ai.generate({
-      // Using the default model configured in genkit.ts (e.g., gemini-2.0-flash)
+      model: 'googleai/gemini-2.0-flash', // Explicitly specify the model
       prompt: messagesForPrompt, // Only history and user input here
       config: {
         systemInstruction: { role: 'system', content: [{ text: SYSTEM_INSTRUCTION }] }, // System instruction moved here
