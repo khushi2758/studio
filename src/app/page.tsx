@@ -2,17 +2,21 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import type { ClothingItem, Outfit, PersonImage } from '@/lib/types';
 import ClothingUploadForm from '@/components/app/ClothingUploadForm';
 import ClothingItemCard from '@/components/app/ClothingItemCard';
 import OutfitCuration from '@/components/app/OutfitCuration';
 import SavedOutfits from '@/components/app/SavedOutfits';
 import PersonImageUploadForm from '@/components/app/PersonImageUploadForm';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Shirt, UserCircle2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Shirt, UserCircle2, MessagesSquare, PlusCircle, LogIn } from 'lucide-react';
 import Image from 'next/image';
-import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { useToast } from '@/hooks/use-toast'; 
 
 const MAX_ITEMS = 10;
 
@@ -21,18 +25,18 @@ export default function HomePage() {
   const [savedOutfits, setSavedOutfits] = useState<Outfit[]>([]);
   const [personImage, setPersonImage] = useState<PersonImage | null>(null);
   const [isClient, setIsClient] = useState(false);
-  const { toast } = useToast(); // Initialize toast
+  const { toast } = useToast(); 
+  const router = useRouter();
+  const [joinRoomId, setJoinRoomId] = useState('');
 
   useEffect(() => {
     setIsClient(true);
-    // Load from localStorage if available
     const storedClothing = localStorage.getItem('clothingItems');
     if (storedClothing) {
       setClothingItems(JSON.parse(storedClothing));
     }
     const storedOutfits = localStorage.getItem('savedOutfits');
     if (storedOutfits) {
-      // Outfits loaded from storage will now include generatedOutfitImageUri if it was saved
       setSavedOutfits(JSON.parse(storedOutfits));
     }
     const storedPersonImage = localStorage.getItem('personImage');
@@ -49,7 +53,6 @@ export default function HomePage() {
 
   useEffect(() => {
     if (isClient) {
-      // Now attempting to save the full savedOutfits, including generatedOutfitImageUri
       try {
         localStorage.setItem('savedOutfits', JSON.stringify(savedOutfits));
       } catch (error) {
@@ -59,7 +62,7 @@ export default function HomePage() {
             title: "Storage Limit Reached",
             description: "Cannot save more outfits with images due to browser storage limits. Older outfits' images might not be persistently stored.",
             variant: "destructive",
-            duration: 10000, // Show for longer
+            duration: 10000, 
           });
         } else {
           toast({
@@ -93,7 +96,6 @@ export default function HomePage() {
   };
 
   const handleSaveOutfit = (outfit: Outfit) => {
-    // The outfit object here will contain generatedOutfitImageUri from curation
     setSavedOutfits((prevOutfits) => [outfit, ...prevOutfits]);
   };
 
@@ -104,9 +106,25 @@ export default function HomePage() {
   const handleSetPersonImage = (image: PersonImage | null) => {
     setPersonImage(image);
   };
+
+  const handleCreateRoom = () => {
+    const newRoomId = crypto.randomUUID();
+    router.push(`/chat/${newRoomId}`);
+  };
+
+  const handleJoinRoom = () => {
+    if (joinRoomId.trim()) {
+      router.push(`/chat/${joinRoomId.trim()}`);
+    } else {
+      toast({
+        title: "Invalid Room ID",
+        description: "Please enter a Room ID to join.",
+        variant: "destructive",
+      });
+    }
+  };
   
   if (!isClient) {
-    // Render a loading state or null during SSR to avoid hydration mismatch with localStorage
     return (
         <div className="flex justify-center items-center h-screen">
             <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary"></div>
@@ -117,9 +135,7 @@ export default function HomePage() {
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-12">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        {/* Left Column: Wardrobe and Person Image */}
         <div className="lg:col-span-2 space-y-8">
-           {/* Clothing Upload and Wardrobe Display Section */}
           <section aria-labelledby="wardrobe-title">
             <Card className="shadow-xl overflow-hidden">
               <CardHeader>
@@ -155,9 +171,7 @@ export default function HomePage() {
           </section>
         </div>
 
-        {/* Right Column: Person Image Upload and Outfit Curation */}
         <div className="lg:col-span-1 space-y-8">
-          {/* Person Image Upload Section */}
           <section aria-labelledby="person-image-title">
             <Card className="shadow-xl">
               <CardHeader>
@@ -175,7 +189,6 @@ export default function HomePage() {
             </Card>
           </section>
 
-           {/* Outfit Curation Section */}
           {clothingItems.length > 0 && (
             <section aria-labelledby="curate-title">
               <Card className="shadow-xl">
@@ -200,7 +213,42 @@ export default function HomePage() {
       
       <Separator />
 
-      {/* Saved Outfits (Lookbook) Section */}
+      <section aria-labelledby="chat-rooms-title">
+        <Card className="shadow-xl">
+          <CardHeader>
+            <CardTitle id="chat-rooms-title" className="text-2xl flex items-center">
+              <MessagesSquare className="mr-3 h-7 w-7 text-primary" />
+              Fashion Chat Rooms
+            </CardTitle>
+            <CardDescription>
+              Join a discussion or create your own private room. (Note: Chat is local to your browser)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="join-room-id">Join Existing Room</Label>
+              <div className="flex space-x-2">
+                <Input
+                  id="join-room-id"
+                  placeholder="Enter Room ID"
+                  value={joinRoomId}
+                  onChange={(e) => setJoinRoomId(e.target.value)}
+                />
+                <Button onClick={handleJoinRoom}><LogIn className="mr-2 h-4 w-4"/> Join</Button>
+              </div>
+            </div>
+            <Separator />
+            <div>
+              <Button onClick={handleCreateRoom} className="w-full" variant="outline">
+                <PlusCircle className="mr-2 h-4 w-4" /> Create New Room
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <Separator />
+
       <section aria-labelledby="lookbook-title">
         <Card className="shadow-xl">
           <CardHeader>

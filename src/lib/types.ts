@@ -23,3 +23,12 @@ export type PersonImage = {
   imageDataUri: string; // For AI processing (data:image/jpeg;base64,...)
 };
 
+export interface ChatMessage {
+  id: string;
+  roomId: string;
+  nickname: string;
+  text: string;
+  timestamp: string;
+  type: 'message' | 'image'; // 'image' type not fully used in this iteration
+  imageUrl?: string; // For image messages
+}
