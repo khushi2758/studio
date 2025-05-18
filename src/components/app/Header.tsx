@@ -8,11 +8,11 @@ const Header: FC = () => {
       <div className="container mx-auto px-4 md:px-8">
         <Link href="/">
           <Image
-            src="/logo.png" // User must place logo.png in the /public folder
-            alt="AestheFit Logo"
-            width={40} // Adjusted for a small, square logo in header
+            src="https://placehold.co/40x40.png" // Temporarily using a placeholder
+            alt="AestheFit Logo Placeholder"
+            width={40}
             height={40}
-            priority // Preload logo for better LCP
+            priority
             data-ai-hint="logo brand"
           />
         </Link>
