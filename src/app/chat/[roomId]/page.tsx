@@ -332,8 +332,8 @@ export default function ChatRoomPage() {
                         <NextImage
                           src={msg.imageDataUri}
                           alt={msg.text || `Image from ${msg.nickname}`}
-                          width={200} 
-                          height={200} 
+                          width={280} 
+                          height={280} 
                           className="rounded-md object-contain max-w-full h-auto"
                           data-ai-hint="chat image"
                         />
@@ -414,5 +414,7 @@ export default function ChatRoomPage() {
     </div>
   );
 }
+
+    
 
     
