@@ -43,9 +43,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUsers(JSON.parse(storedUsers));
       }
       // Check for a currently logged-in user (simple session persistence)
-      const storedCurrentUser = localStorage.getItem('currentUserEmail');
-      if(storedCurrentUser){
-        const foundUser = (JSON.parse(storedUsers || "[]") as User[]).find(u => u.email === storedCurrentUser);
+      const storedCurrentUserEmail = localStorage.getItem('currentUserEmail');
+      if(storedCurrentUserEmail){
+        const parsedStoredUsers = JSON.parse(storedUsers || "[]") as User[];
+        const foundUser = parsedStoredUsers.find(u => u.email === storedCurrentUserEmail);
         if(foundUser) {
             setCurrentUser(foundUser);
         }
@@ -121,20 +122,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     router.push('/');
   };
   
-  // Initial loading state for auth check
-  if (isLoading && typeof window !== 'undefined') {
-     // Avoid showing anything until localStorage check is done on client
-     // This helps prevent UI flicker if user was previously logged in
-  }
-
-
   return (
     <AuthContext.Provider value={{ currentUser, users, signUp, signIn, signOut, isLoading }}>
-      {!isLoading && children}
-      {isLoading && typeof window !== 'undefined' && (
+      {isLoading ? (
          <div className="flex justify-center items-center h-screen">
             <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary"></div>
         </div>
+      ) : (
+        children
       )}
     </AuthContext.Provider>
   );
