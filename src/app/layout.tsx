@@ -10,7 +10,7 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: 'Aesthete Atelier',
+  title: 'AestheFit',
   description: 'AI-Powered Outfit Curation & Virtual Try-On',
 };
 
