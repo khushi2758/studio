@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import Header from '@/components/app/Header';
 import Footer from '@/components/app/Footer'; // Import Footer
 import { AuthProvider } from '@/context/AuthContext';
+import Chatbot from '@/components/app/Chatbot'; // Import Chatbot
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -30,6 +31,7 @@ export default function RootLayout({
           <main className="flex-grow"> {/* Main content will take available space */}
             {children}
           </main>
+          <Chatbot /> {/* Add Chatbot here so it floats above */}
           <Footer /> {/* Add Footer here */}
           <Toaster />
         </AuthProvider>
