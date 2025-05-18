@@ -13,6 +13,7 @@ import {
   SheetTitle,
   SheetFooter,
   SheetClose,
+  SheetTrigger, // Added SheetTrigger here
 } from "@/components/ui/sheet";
 import { MessageSquare, Send, Loader2, Bot, User } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -63,22 +64,14 @@ export default function Chatbot() {
       text: currentInput,
     };
 
-    // Prepare history for the AI flow.
-    // `messages` here is the state *before* the current `userMessage` is added.
-    // The initial AI greeting is a UI element and should not be part of the LLM history
-    // if it's the first message or the only message.
     let historyForAI: Array<{sender: 'user' | 'ai', text: string}> = [];
-    if (messages.length > 0) {
-        const startIndex = (messages.length === 1 && messages[0].sender === 'ai' && messages[0].text === INITIAL_AI_GREETING) ? 1 : 0;
-        
-        let relevantMessages = messages;
-        // If the very first message is the initial AI greeting, filter it out from history for the LLM
-        if (messages.length > 0 && messages[0].sender === 'ai' && messages[0].text === INITIAL_AI_GREETING) {
-            relevantMessages = messages.slice(1);
-        } else {
-            relevantMessages = messages;
-        }
-        
+    
+    // Filter out the initial AI greeting from the history sent to the LLM
+    const relevantMessages = messages.filter(msg => 
+      !(msg.sender === 'ai' && msg.text === INITIAL_AI_GREETING)
+    );
+
+    if (relevantMessages.length > 0) {
         historyForAI = relevantMessages.map(msg => ({
             sender: msg.sender,
             text: msg.text,
@@ -93,7 +86,7 @@ export default function Chatbot() {
     try {
       const result = await chatWithBot({
         userInput: currentInput,
-        history: historyForAI.length > 0 ? historyForAI : undefined, // Pass undefined if history is empty
+        history: historyForAI.length > 0 ? historyForAI : undefined, 
       });
 
       const aiMessage: Message = {
