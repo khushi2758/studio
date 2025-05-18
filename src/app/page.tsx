@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { Shirt, UserCircle2 } from 'lucide-react';
 import Image from 'next/image';
+import { useToast } from '@/hooks/use-toast'; // Import useToast
 
 const MAX_ITEMS = 10;
 
@@ -20,6 +21,7 @@ export default function HomePage() {
   const [savedOutfits, setSavedOutfits] = useState<Outfit[]>([]);
   const [personImage, setPersonImage] = useState<PersonImage | null>(null);
   const [isClient, setIsClient] = useState(false);
+  const { toast } = useToast(); // Initialize toast
 
   useEffect(() => {
     setIsClient(true);
@@ -30,7 +32,7 @@ export default function HomePage() {
     }
     const storedOutfits = localStorage.getItem('savedOutfits');
     if (storedOutfits) {
-      // Outfits loaded from storage will not have generatedOutfitImageUri
+      // Outfits loaded from storage will now include generatedOutfitImageUri if it was saved
       setSavedOutfits(JSON.parse(storedOutfits));
     }
     const storedPersonImage = localStorage.getItem('personImage');
@@ -47,19 +49,28 @@ export default function HomePage() {
 
   useEffect(() => {
     if (isClient) {
-      // Create a version of savedOutfits without the large image data for localStorage
-      const outfitsForStorage = savedOutfits.map(outfit => {
-        const { generatedOutfitImageUri, ...rest } = outfit; // Destructure to remove it
-        return rest; // Return outfit object without the image URI for storage
-      });
+      // Now attempting to save the full savedOutfits, including generatedOutfitImageUri
       try {
-        localStorage.setItem('savedOutfits', JSON.stringify(outfitsForStorage));
+        localStorage.setItem('savedOutfits', JSON.stringify(savedOutfits));
       } catch (error) {
         console.error("Error saving outfits to localStorage:", error);
-        // Potentially notify user or handle more gracefully if even stripped down data is too large
+        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+          toast({
+            title: "Storage Limit Reached",
+            description: "Cannot save more outfits with images due to browser storage limits. Older outfits' images might not be persistently stored.",
+            variant: "destructive",
+            duration: 10000, // Show for longer
+          });
+        } else {
+          toast({
+            title: "Storage Error",
+            description: "Could not save outfit history.",
+            variant: "destructive",
+          });
+        }
       }
     }
-  }, [savedOutfits, isClient]);
+  }, [savedOutfits, isClient, toast]);
 
   useEffect(() => {
     if (isClient) {
