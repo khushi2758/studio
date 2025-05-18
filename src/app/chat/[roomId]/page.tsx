@@ -278,18 +278,21 @@ export default function ChatRoomPage() {
     <div className="container mx-auto p-4 md:p-8 h-[calc(100vh-8rem)] flex flex-col">
       <Card className="shadow-xl flex-grow flex flex-col">
         <CardHeader className="border-b">
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle className="text-2xl">
-                Chat Room: <span className="font-mono text-sm ml-2 bg-muted px-2 py-1 rounded truncate max-w-[200px] md:max-w-xs inline-block">{roomId}</span>
+          <div className="flex flex-wrap sm:flex-nowrap justify-between items-center gap-2">
+            <div className="flex-grow">
+              <CardTitle className="text-xl sm:text-2xl">
+                Chat Room: <span className="font-mono text-xs sm:text-sm ml-1 sm:ml-2 bg-muted px-2 py-1 rounded truncate max-w-[150px] xs:max-w-[180px] sm:max-w-[200px] md:max-w-xs inline-block align-bottom">{roomId}</span>
               </CardTitle>
-              <CardDescription>
-                Chatting as: <span className="font-semibold text-primary">{nickname}</span> (Messages & images are local to this browser)
+              <CardDescription className="mt-1">
+                Chatting as: <span className="font-semibold text-primary">{nickname}</span>
+                <span className="text-xs text-muted-foreground/80 block sm:inline sm:ml-1">
+                   (Messages & images are local to this browser)
+                </span>
               </CardDescription>
             </div>
-            <Button variant="outline" size="sm" asChild>
+            <Button variant="outline" size="sm" asChild className="shrink-0">
               <Link href="/">
-                <ArrowLeft className="mr-2 h-4 w-4" /> Home
+                <ArrowLeft className="mr-0 h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Home</span>
               </Link>
             </Button>
           </div>
@@ -329,8 +332,8 @@ export default function ChatRoomPage() {
                         <NextImage
                           src={msg.imageDataUri}
                           alt={msg.text || `Image from ${msg.nickname}`}
-                          width={200} // Constrain width for chat display
-                          height={200} // Constrain height
+                          width={200} 
+                          height={200} 
                           className="rounded-md object-contain max-w-full h-auto"
                           data-ai-hint="chat image"
                         />
@@ -365,7 +368,7 @@ export default function ChatRoomPage() {
 
         <CardFooter className="p-4 border-t bg-background">
           {selectedImagePreview && (
-            <div className="mb-2 p-2 border rounded-md relative w-24 h-24">
+            <div className="mb-2 p-2 border rounded-md relative w-20 h-20 sm:w-24 sm:h-24"> {/* Slightly smaller on mobile */}
               <NextImage src={selectedImagePreview} alt="Selected preview" layout="fill" objectFit="cover" className="rounded-md" data-ai-hint="image preview"/>
               <Button
                 variant="ghost"
@@ -411,3 +414,5 @@ export default function ChatRoomPage() {
     </div>
   );
 }
+
+    
