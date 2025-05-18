@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import type { ClothingItem, Outfit, PersonImage } from '@/lib/types';
 import ClothingUploadForm from '@/components/app/ClothingUploadForm';
 import ClothingItemCard from '@/components/app/ClothingItemCard';
@@ -14,11 +15,12 @@ import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Shirt, UserCircle2, MessagesSquare, PlusCircle, LogIn } from 'lucide-react';
+import { Shirt, UserCircle2, MessagesSquare, PlusCircle, LogIn, Trash2, History } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast'; 
 
 const MAX_ITEMS = 10;
+const RECENT_ROOMS_KEY = 'aesthefit-recentChatRooms';
 
 export default function HomePage() {
   const [clothingItems, setClothingItems] = useState<ClothingItem[]>([]);
@@ -28,6 +30,8 @@ export default function HomePage() {
   const { toast } = useToast(); 
   const router = useRouter();
   const [joinRoomId, setJoinRoomId] = useState('');
+  const [recentRoomIds, setRecentRoomIds] = useState<string[]>([]);
+
 
   useEffect(() => {
     setIsClient(true);
@@ -43,6 +47,10 @@ export default function HomePage() {
     if (storedPersonImage) {
       setPersonImage(JSON.parse(storedPersonImage));
     }
+    const storedRecentRooms = localStorage.getItem(RECENT_ROOMS_KEY);
+    if (storedRecentRooms) {
+      setRecentRoomIds(JSON.parse(storedRecentRooms));
+    }
   }, []);
 
   useEffect(() => {
@@ -54,6 +62,7 @@ export default function HomePage() {
   useEffect(() => {
     if (isClient) {
       try {
+        // When saving outfits, include the generatedOutfitImageUri
         localStorage.setItem('savedOutfits', JSON.stringify(savedOutfits));
       } catch (error) {
         console.error("Error saving outfits to localStorage:", error);
@@ -122,6 +131,15 @@ export default function HomePage() {
         variant: "destructive",
       });
     }
+  };
+
+  const handleClearRecentRooms = () => {
+    localStorage.removeItem(RECENT_ROOMS_KEY);
+    setRecentRoomIds([]);
+    toast({
+      title: "Recent Rooms Cleared",
+      description: "Your list of recently visited chat rooms has been cleared.",
+    });
   };
   
   if (!isClient) {
@@ -210,6 +228,42 @@ export default function HomePage() {
           )}
         </div>
       </div>
+      
+      <Separator />
+
+      {recentRoomIds.length > 0 && (
+        <section aria-labelledby="recent-chat-rooms-title">
+          <Card className="shadow-xl">
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle id="recent-chat-rooms-title" className="text-2xl flex items-center">
+                  <History className="mr-3 h-7 w-7 text-primary" />
+                  Your Recent Chat Rooms
+                </CardTitle>
+                <Button variant="outline" size="sm" onClick={handleClearRecentRooms}>
+                  <Trash2 className="mr-2 h-4 w-4" /> Clear History
+                </Button>
+              </div>
+              <CardDescription>
+                Quickly rejoin your recently visited chat rooms.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <ul className="space-y-1">
+                {recentRoomIds.map((id) => (
+                  <li key={id}>
+                    <Button variant="link" asChild className="p-0 h-auto justify-start">
+                      <Link href={`/chat/${id}`} className="truncate block font-mono text-sm">
+                        {id}
+                      </Link>
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </section>
+      )}
       
       <Separator />
 

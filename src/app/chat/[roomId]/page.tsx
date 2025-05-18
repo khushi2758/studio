@@ -16,6 +16,8 @@ import { ArrowLeft, Send, User, ImagePlus, XCircle, Heart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const MAX_IMAGE_SIZE_MB = 2; // Max image size in MB for upload
+const MAX_RECENT_ROOMS = 5;
+const RECENT_ROOMS_KEY = 'aesthefit-recentChatRooms';
 
 // Helper function to convert file to data URI
 const fileToDataUri = (file: File): Promise<string> =>
@@ -65,6 +67,23 @@ export default function ChatRoomPage() {
           localStorage.removeItem(`chatRoom-${roomId}-messages`); // Clear corrupted data
         }
       }
+
+      // Save visited room ID
+      try {
+        const recentRoomsRaw = localStorage.getItem(RECENT_ROOMS_KEY);
+        let recentRooms: string[] = recentRoomsRaw ? JSON.parse(recentRoomsRaw) : [];
+        // Remove current room ID if it exists to move it to the front
+        recentRooms = recentRooms.filter(id => id !== roomId);
+        // Add current room ID to the beginning
+        recentRooms.unshift(roomId);
+        // Limit the number of recent rooms
+        recentRooms = recentRooms.slice(0, MAX_RECENT_ROOMS);
+        localStorage.setItem(RECENT_ROOMS_KEY, JSON.stringify(recentRooms));
+      } catch (error) {
+        console.error("Error saving recent room ID:", error);
+        // Optionally, notify the user if this is critical
+      }
+
     }
   }, [roomId, toast]);
 
@@ -283,7 +302,7 @@ export default function ChatRoomPage() {
               <CardTitle className="text-xl sm:text-2xl">
                 Chat Room: <span className="font-mono text-xs sm:text-sm ml-1 sm:ml-2 bg-muted px-2 py-1 rounded truncate max-w-[150px] xs:max-w-[180px] sm:max-w-[200px] md:max-w-xs inline-block align-bottom">{roomId}</span>
               </CardTitle>
-              <CardDescription className="mt-1">
+              <CardDescription className="mt-1 text-xs sm:text-sm">
                 Chatting as: <span className="font-semibold text-primary">{nickname}</span>
                 <span className="text-xs text-muted-foreground/80 block sm:inline sm:ml-1">
                    (Messages & images are local to this browser)
@@ -414,7 +433,6 @@ export default function ChatRoomPage() {
     </div>
   );
 }
-
     
 
     
