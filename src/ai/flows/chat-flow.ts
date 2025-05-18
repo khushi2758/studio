@@ -50,29 +50,31 @@ const chatWithBotFlow = ai.defineFlow(
     outputSchema: ChatOutputSchema,
   },
   async (input) => {
-    // Construct the message array for Genkit, EXCLUDING system instruction from here
-    const messagesForPrompt: MessageData[] = [];
+    // Diagnostic step: Simplify the prompt to only include the current user's input.
+    // The history processing is temporarily bypassed to isolate the error.
+    const simplifiedPrompt: MessageData[] = [
+      { role: 'user', content: [{ text: input.userInput }] }
+    ];
 
-    // Add history messages
-    if (input.history) {
-      input.history.forEach(msg => {
-        messagesForPrompt.push({
-          role: msg.sender === 'ai' ? 'model' : 'user',
-          content: [{ text: msg.text }],
-        });
-      });
-    }
-
-    // Add the latest user input
-    messagesForPrompt.push({ role: 'user', content: [{ text: input.userInput }] });
+    // Original messagesForPrompt construction (commented out for diagnosis)
+    // const messagesForPrompt: MessageData[] = [];
+    // if (input.history) {
+    //   input.history.forEach(msg => {
+    //     messagesForPrompt.push({
+    //       role: msg.sender === 'ai' ? 'model' : 'user',
+    //       content: [{ text: msg.text }],
+    //     });
+    //   });
+    // }
+    // messagesForPrompt.push({ role: 'user', content: [{ text: input.userInput }] });
 
     const response = await ai.generate({
-      // model: 'googleai/gemini-2.0-flash', // Rely on global default model from genkit.ts
-      prompt: messagesForPrompt, // Only history and user input here
+      // Rely on global default model from genkit.ts
+      prompt: simplifiedPrompt, // Using the simplified prompt
       config: {
-        systemInstruction: { role: 'system', content: [{ text: SYSTEM_INSTRUCTION }] }, // System instruction moved here
-        temperature: 0.75, // Slightly increased for more creative/conversational styling
-        safetySettings: [ // Basic safety settings
+        systemInstruction: { role: 'system', content: [{ text: SYSTEM_INSTRUCTION }] },
+        temperature: 0.75,
+        safetySettings: [
           { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
           { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
           { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
@@ -83,7 +85,6 @@ const chatWithBotFlow = ai.defineFlow(
 
     const aiResponse = response.text;
     if (!aiResponse) {
-      // Check if there's more info in the response, e.g. safety ratings
       const candidate = response.candidates[0];
       if (candidate?.finishReason === 'SAFETY') {
          throw new Error('AI response was blocked due to safety settings. Please rephrase your message.');
@@ -93,3 +94,4 @@ const chatWithBotFlow = ai.defineFlow(
     return { aiResponse };
   }
 );
+
