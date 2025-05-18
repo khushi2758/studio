@@ -69,7 +69,7 @@ const chatWithBotFlow = ai.defineFlow(
     // messagesForPrompt.push({ role: 'user', content: [{ text: input.userInput }] });
 
     const response = await ai.generate({
-      // Rely on global default model from genkit.ts
+      model: 'googleai/gemini-2.0-flash', // Explicitly specify the model
       prompt: simplifiedPrompt, // Using the simplified prompt
       config: {
         systemInstruction: { role: 'system', content: [{ text: SYSTEM_INSTRUCTION }] },
@@ -87,9 +87,13 @@ const chatWithBotFlow = ai.defineFlow(
     if (!aiResponse) {
       const candidate = response.candidates[0];
       if (candidate?.finishReason === 'SAFETY') {
-         throw new Error('AI response was blocked due to safety settings. Please rephrase your message.');
+         throw new Error('AI response was blocked due to safety settings. Please rephrase your message or adjust safety configurations if appropriate.');
       }
-      throw new Error('AI did not return a text response.');
+      // Log more details if available
+      const finishMessage = candidate?.finishMessage || 'No specific finish message provided.';
+      const safetyRatings = candidate?.safetyRatings ? JSON.stringify(candidate.safetyRatings) : 'No safety ratings available.';
+      console.error(`AI did not return a text response. Finish Reason: ${candidate?.finishReason}. Finish Message: ${finishMessage}. Safety Ratings: ${safetyRatings}. Full candidate: ${JSON.stringify(candidate)}`);
+      throw new Error(`AI did not return a text response. Finish Reason: ${candidate?.finishReason}. Please check server logs for more details.`);
     }
     return { aiResponse };
   }
