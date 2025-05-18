@@ -23,12 +23,18 @@ export type PersonImage = {
   imageDataUri: string; // For AI processing (data:image/jpeg;base64,...)
 };
 
+export interface ChatMessageReaction {
+  nickname: string;
+  emoji: string; 
+}
+
 export interface ChatMessage {
   id: string;
   roomId: string;
   nickname: string;
-  text: string;
+  text?: string; // Text is now optional
   timestamp: string;
-  type: 'message' | 'image'; // 'image' type not fully used in this iteration
-  imageUrl?: string; // For image messages
+  type: 'message' | 'image';
+  imageDataUri?: string; // For image messages (stored as data URI)
+  reactions?: ChatMessageReaction[];
 }
