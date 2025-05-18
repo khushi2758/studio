@@ -14,9 +14,11 @@ import { useToast } from '@/hooks/use-toast';
 import type { ChatMessage, ChatMessageReaction, PollOption } from '@/lib/types';
 import { ArrowLeft, Send, User, ImagePlus, XCircle, Heart, Vote, ListPlus, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Textarea } from '@/components/ui/textarea'; // Added for poll question
+import { Textarea } from '@/components/ui/textarea';
+import { db } from '@/lib/firebase'; // Import Firestore instance
+import { collection, addDoc, query, orderBy, onSnapshot, Timestamp, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 
-const MAX_IMAGE_SIZE_MB = 2; 
+const MAX_IMAGE_SIZE_MB = 2;
 const MAX_RECENT_ROOMS = 5;
 const RECENT_ROOMS_KEY = 'aesthefit-recentChatRooms';
 
@@ -40,18 +42,18 @@ export default function ChatRoomPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentMessage, setCurrentMessage] = useState('');
   const [isLoadingNickname, setIsLoadingNickname] = useState(true);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(true);
+
 
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
 
-  // Poll creation state
   const [isCreatingPoll, setIsCreatingPoll] = useState(false);
   const [pollQuestionInput, setPollQuestionInput] = useState('');
   const [pollOptionFiles, setPollOptionFiles] = useState<[File | null, File | null]>([null, null]);
   const [pollOptionPreviews, setPollOptionPreviews] = useState<[string | null, string | null]>([null, null]);
   const pollOption1FileInputRef = useRef<HTMLInputElement>(null);
   const pollOption2FileInputRef = useRef<HTMLInputElement>(null);
-
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -66,17 +68,7 @@ export default function ChatRoomPage() {
       }
       setIsLoadingNickname(false);
 
-      const storedMessages = localStorage.getItem(`chatRoom-${roomId}-messages`);
-      if (storedMessages) {
-        try {
-          setMessages(JSON.parse(storedMessages));
-        } catch (error) {
-          console.error("Error parsing stored messages:", error);
-          toast({ title: "Error loading chat", description: "Could not load previous messages.", variant: "destructive"});
-          localStorage.removeItem(`chatRoom-${roomId}-messages`); 
-        }
-      }
-
+      // Save to recent rooms (localStorage)
       try {
         const recentRoomsRaw = localStorage.getItem(RECENT_ROOMS_KEY);
         let recentRooms: string[] = recentRoomsRaw ? JSON.parse(recentRoomsRaw) : [];
@@ -88,32 +80,38 @@ export default function ChatRoomPage() {
         console.error("Error saving recent room ID:", error);
       }
     }
-  }, [roomId, toast]);
+  }, [roomId]);
 
-  useEffect(() => {
-    if (isClient && roomId && messages.length > 0) {
-      try {
-        localStorage.setItem(`chatRoom-${roomId}-messages`, JSON.stringify(messages));
-      } catch (error) {
-         console.error("Error saving messages to localStorage:", error);
-        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-          toast({
-            title: "Storage Limit Reached",
-            description: "Cannot save more messages due to browser storage limits. Older messages, images or polls might be lost.",
-            variant: "destructive",
-            duration: 7000, 
-          });
-        } else {
-          toast({
-            title: "Storage Error",
-            description: "Could not save message history.",
-            variant: "destructive",
-          });
-        }
-      }
-    }
-  }, [messages, roomId, isClient, toast]);
-  
+  // Firestore real-time listener for messages
+ useEffect(() => {
+    if (!roomId || !isClient) return;
+
+    setIsLoadingMessages(true);
+    const messagesColRef = collection(db, 'chatRooms', roomId, 'messages');
+    const q = query(messagesColRef, orderBy('timestamp', 'asc'));
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const firestoreMessages: ChatMessage[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        firestoreMessages.push({
+          id: doc.id,
+          ...data,
+          // type assertion for timestamp as it comes from firestore
+        } as ChatMessage);
+      });
+      setMessages(firestoreMessages);
+      setIsLoadingMessages(false);
+    }, (error) => {
+      console.error("Error fetching messages from Firestore:", error);
+      toast({ title: "Error loading chat", description: "Could not connect to fetch messages. Ensure Firebase is configured correctly.", variant: "destructive"});
+      setIsLoadingMessages(false);
+    });
+
+    return () => unsubscribe(); // Cleanup listener on component unmount
+  }, [roomId, isClient, toast]);
+
+
   useEffect(() => {
     if (isClient && roomId && nickname) {
       localStorage.setItem(`chatRoom-${roomId}-nickname`, nickname);
@@ -125,7 +123,7 @@ export default function ChatRoomPage() {
   };
 
   useEffect(scrollToBottom, [messages]);
-  
+
   useEffect(() => {
     if (!isLoadingNickname && nickname && inputRef.current && !isCreatingPoll) {
       inputRef.current.focus();
@@ -145,106 +143,111 @@ export default function ChatRoomPage() {
     }
   };
 
+  // --- Image and Poll related functions will remain largely local for now ---
+  // --- Or they would need significant changes to integrate with Firebase Storage / more complex Firestore structures ---
+
   const handleSingleImageInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       if (file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024) {
-        toast({
-          title: "Image too large",
-          description: `Please select an image smaller than ${MAX_IMAGE_SIZE_MB}MB.`,
-          variant: "destructive",
-        });
+        toast({ title: "Image too large", description: `Max ${MAX_IMAGE_SIZE_MB}MB.`, variant: "destructive" });
         return;
       }
       setSelectedImageFile(file);
-      const previewUrl = URL.createObjectURL(file);
-      setSelectedImagePreview(previewUrl);
+      setSelectedImagePreview(URL.createObjectURL(file));
     }
   };
 
   const clearSelectedImage = () => {
     setSelectedImageFile(null);
     setSelectedImagePreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''; 
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleSendMessage = async (e: FormEvent) => {
     e.preventDefault();
-    if ((!currentMessage.trim() && !selectedImageFile) || !nickname) return;
-
-    let newMessage: ChatMessage;
+    if ((!currentMessage.trim() && !selectedImageFile) || !nickname || !roomId) return;
 
     if (selectedImageFile) {
+      // IMAGE SENDING LOGIC (CURRENTLY LOCAL)
+      // For real-time, this would upload to Firebase Storage, then save URL to Firestore.
+      // For now, we'll keep it local or skip real-time for images to simplify.
+      // Let's make images local for now.
       toast({
-        title: "Image Upload Notice",
-        description: "Storing images in chat uses browser local storage and has significant limitations. Large images or many images may cause issues or not save permanently.",
+        title: "Image Sent (Locally)",
+        description: "Image sharing is currently local to your browser and not real-time. Text messages are real-time.",
         variant: "default",
         duration: 8000,
       });
       try {
         const imageDataUri = await fileToDataUri(selectedImageFile);
-        newMessage = {
-          id: crypto.randomUUID(),
+        const localImageMessage: ChatMessage = {
+          id: crypto.randomUUID(), // Temp ID for local display
           roomId,
           nickname,
           text: currentMessage.trim() || undefined,
-          timestamp: new Date().toISOString(),
+          timestamp: new Date().toISOString(), // For local sorting, Firestore uses serverTimestamp
           type: 'image',
           imageDataUri: imageDataUri,
           reactions: [],
         };
+        // Add to local messages for immediate display, but it won't go to Firestore
+        setMessages(prev => [...prev, localImageMessage]); 
+        setCurrentMessage('');
+        clearSelectedImage();
       } catch (error) {
         console.error("Error converting image to data URI:", error);
         toast({ title: "Image Error", description: "Could not process the image.", variant: "destructive" });
-        return;
       }
-    } else {
-      newMessage = {
-        id: crypto.randomUUID(),
-        roomId,
-        nickname,
-        text: currentMessage.trim(),
-        timestamp: new Date().toISOString(),
-        type: 'message',
-        reactions: [],
-      };
+      return; // End here for local image handling
     }
 
-    setMessages((prevMessages) => [...prevMessages, newMessage]);
-    setCurrentMessage('');
-    clearSelectedImage();
+    // Text message sending (to Firestore)
+    if (currentMessage.trim()) {
+      try {
+        const messagesColRef = collection(db, 'chatRooms', roomId, 'messages');
+        await addDoc(messagesColRef, {
+          roomId,
+          nickname,
+          text: currentMessage.trim(),
+          timestamp: serverTimestamp(), // Firestore server-side timestamp
+          type: 'message',
+        });
+        setCurrentMessage('');
+      } catch (error) {
+        console.error("Error sending message to Firestore:", error);
+        toast({ title: "Send Error", description: "Could not send message.", variant: "destructive" });
+      }
+    }
   };
 
-  const handleReaction = (messageId: string, emoji: string) => {
+
+  // Reactions: Stays local for now. Real-time reactions would need Firestore updates.
+   const handleReaction = (messageId: string, emoji: string) => {
     if (!nickname) return;
+    // This function would need to update Firestore for real-time reactions.
+    // For now, it only updates local state if the message is local.
+    // If message is from Firestore, this reaction won't persist or be shared.
     setMessages(prevMessages =>
       prevMessages.map(msg => {
-        if (msg.id === messageId) {
+        if (msg.id === messageId && !msg.timestamp.hasOwnProperty('seconds')) { // Check if it's a local message
           const existingReactions = msg.reactions || [];
           const userReactionIndex = existingReactions.findIndex(
             r => r.nickname === nickname && r.emoji === emoji
           );
-
           if (userReactionIndex > -1) {
-            return {
-              ...msg,
-              reactions: existingReactions.filter((_, index) => index !== userReactionIndex),
-            };
+            return { ...msg, reactions: existingReactions.filter((_, index) => index !== userReactionIndex) };
           } else {
-            return {
-              ...msg,
-              reactions: [...existingReactions, { nickname, emoji }],
-            };
+            return { ...msg, reactions: [...existingReactions, { nickname, emoji }] };
           }
         }
         return msg;
       })
     );
+    toast({ title: "Reaction (Local)", description: "Reactions on images/polls are local for now."});
   };
 
-  // Poll creation logic
+  // Polls: Stays local for now. Real-time polls are complex.
   const handlePollImageChange = (index: 0 | 1, e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -255,7 +258,6 @@ export default function ChatRoomPage() {
       const newFiles = [...pollOptionFiles] as [File | null, File | null];
       newFiles[index] = file;
       setPollOptionFiles(newFiles);
-
       const newPreviews = [...pollOptionPreviews] as [string | null, string | null];
       newPreviews[index] = URL.createObjectURL(file);
       setPollOptionPreviews(newPreviews);
@@ -264,76 +266,49 @@ export default function ChatRoomPage() {
 
   const handleSendPoll = async (e: FormEvent) => {
     e.preventDefault();
-    if (!pollQuestionInput.trim() || !pollOptionFiles[0] || !pollOptionFiles[1] || !nickname) {
-      toast({ title: "Incomplete Poll", description: "Please provide a question and two images for the poll.", variant: "destructive" });
-      return;
-    }
-    toast({
-      title: "Poll Creation Notice",
-      description: "Storing polls with images in chat uses browser local storage and has significant limitations. Many polls or large images may cause storage issues.",
-      variant: "default",
-      duration: 9000,
-    });
-
+    // Polls will be local for now.
+    toast({ title: "Poll Created (Locally)", description: "Polls are local to your browser for now.", variant: "default", duration: 9000 });
+    if (!pollQuestionInput.trim() || !pollOptionFiles[0] || !pollOptionFiles[1] || !nickname) return;
     try {
       const option1DataUri = await fileToDataUri(pollOptionFiles[0]!);
       const option2DataUri = await fileToDataUri(pollOptionFiles[1]!);
-
       const pollOptions: PollOption[] = [
         { id: 'option1', imageDataUri: option1DataUri, voteCount: 0 },
         { id: 'option2', imageDataUri: option2DataUri, voteCount: 0 },
       ];
-
       const newPollMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        roomId,
-        nickname,
-        timestamp: new Date().toISOString(),
-        type: 'poll',
-        pollQuestion: pollQuestionInput.trim(),
-        pollOptions,
-        pollVoters: {},
+        id: crypto.randomUUID(), roomId, nickname, timestamp: new Date().toISOString(),
+        type: 'poll', pollQuestion: pollQuestionInput.trim(), pollOptions, pollVoters: {},
       };
-
       setMessages(prev => [...prev, newPollMessage]);
-      // Reset poll form
-      setIsCreatingPoll(false);
-      setPollQuestionInput('');
-      setPollOptionFiles([null, null]);
-      setPollOptionPreviews([null, null]);
+      setIsCreatingPoll(false); setPollQuestionInput(''); setPollOptionFiles([null, null]); setPollOptionPreviews([null, null]);
       if (pollOption1FileInputRef.current) pollOption1FileInputRef.current.value = '';
       if (pollOption2FileInputRef.current) pollOption2FileInputRef.current.value = '';
-
     } catch (error) {
       console.error("Error creating poll:", error);
-      toast({ title: "Poll Creation Error", description: "Could not process poll images.", variant: "destructive" });
+      toast({ title: "Poll Error", description: "Could not process poll images.", variant: "destructive" });
     }
   };
 
   const handleVote = (messageId: string, optionIdToVoteFor: string) => {
     if (!nickname) return;
-
-    setMessages(prevMessages => 
+    // Voting logic will be local for now.
+    setMessages(prevMessages =>
       prevMessages.map(msg => {
-        if (msg.id === messageId && msg.type === 'poll' && msg.pollOptions && msg.pollVoters) {
-          // Check if user already voted in this poll
-          if (msg.pollVoters[nickname]) {
+        if (msg.id === messageId && msg.type === 'poll' && msg.pollOptions && msg.pollVoters && !msg.timestamp.hasOwnProperty('seconds')) {
+           if (msg.pollVoters[nickname]) {
             toast({ title: "Already Voted", description: "You can only vote once per poll.", variant: "default" });
-            return msg; // User has already voted
+            return msg;
           }
-
-          const updatedOptions = msg.pollOptions.map(opt => 
-            opt.id === optionIdToVoteFor ? { ...opt, voteCount: opt.voteCount + 1 } : opt
-          );
+          const updatedOptions = msg.pollOptions.map(opt => opt.id === optionIdToVoteFor ? { ...opt, voteCount: opt.voteCount + 1 } : opt);
           const updatedVoters = { ...msg.pollVoters, [nickname]: optionIdToVoteFor };
-
           return { ...msg, pollOptions: updatedOptions, pollVoters: updatedVoters };
         }
         return msg;
       })
     );
+     toast({ title: "Vote (Local)", description: "Votes on polls are local for now."});
   };
-
 
   if (!isClient || isLoadingNickname) {
     return (
@@ -357,32 +332,30 @@ export default function ChatRoomPage() {
             <form onSubmit={handleSetNickname} className="space-y-4">
               <div>
                 <Label htmlFor="nickname">Nickname</Label>
-                <Input
-                  id="nickname"
-                  value={tempNickname}
-                  onChange={(e) => setTempNickname(e.target.value)}
-                  placeholder="Your cool nickname"
-                  required
-                  autoFocus
-                />
+                <Input id="nickname" value={tempNickname} onChange={(e) => setTempNickname(e.target.value)} placeholder="Your cool nickname" required autoFocus />
               </div>
-              <Button type="submit" className="w-full">
-                Join Chat
-              </Button>
+              <Button type="submit" className="w-full">Join Chat</Button>
             </form>
           </CardContent>
-           <CardFooter className="flex-col space-y-2 pt-4">
-             <Button variant="outline" asChild className="w-full">
-                <Link href="/">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Home
-                </Link>
-              </Button>
-           </CardFooter>
+          <CardFooter className="flex-col space-y-2 pt-4">
+            <Button variant="outline" asChild className="w-full"><Link href="/"><ArrowLeft className="mr-2 h-4 w-4" />Back to Home</Link></Button>
+          </CardFooter>
         </Card>
       </div>
     );
   }
+
+  // Helper to format Firestore Timestamp or ISO string
+  const formatTimestamp = (timestamp: Timestamp | string): string => {
+    if (typeof timestamp === 'string') {
+      return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    if (timestamp && typeof timestamp.toDate === 'function') {
+      return timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return 'sending...';
+  };
+
 
   return (
     <div className="container mx-auto p-4 md:p-8 h-[calc(100vh-8rem)] flex flex-col">
@@ -396,60 +369,52 @@ export default function ChatRoomPage() {
               <CardDescription className="mt-1 text-xs sm:text-sm">
                 Chatting as: <span className="font-semibold text-primary">{nickname}</span>
                 <span className="text-xs text-muted-foreground/80 block sm:inline sm:ml-1">
-                   (Messages, images & polls are local to this browser)
+                   (Text messages are real-time. Images/polls are local to this browser)
                 </span>
               </CardDescription>
             </div>
             <Button variant="outline" size="sm" asChild className="shrink-0">
-              <Link href="/">
-                <ArrowLeft className="mr-0 h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Exit Room</span>
-              </Link>
+              <Link href="/"><ArrowLeft className="mr-0 h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Exit Room</span></Link>
             </Button>
           </div>
         </CardHeader>
-        
+
         <ScrollArea className="flex-grow p-4 bg-muted/20">
-          <div className="space-y-6"> {/* Increased space-y for polls */}
+          <div className="space-y-6">
+            {isLoadingMessages && messages.length === 0 && (
+                 <div className="text-center text-muted-foreground py-10">Loading messages...</div>
+            )}
+            {!isLoadingMessages && messages.length === 0 && (
+                <div className="text-center text-muted-foreground py-10">
+                    No messages yet. Start the conversation! Text messages are real-time.
+                </div>
+            )}
             {messages.map((msg) => {
               const isMyMessage = msg.nickname === nickname;
               const userHasHeartedImage = msg.type === 'image' && msg.reactions?.some(r => r.nickname === nickname && r.emoji === '❤️');
+              const isFirestoreMessage = msg.timestamp && typeof msg.timestamp !== 'string' && msg.timestamp.hasOwnProperty('seconds');
 
-              if (msg.type === 'poll') {
+
+              if (msg.type === 'poll') { // Polls are local
                 const userVotedOptionId = msg.pollVoters?.[nickname];
                 return (
                   <div key={msg.id} className={cn("flex items-end gap-2 max-w-[95%] sm:max-w-[85%]", isMyMessage ? "ml-auto flex-row-reverse" : "mr-auto flex-row")}>
                     <User className="h-8 w-8 text-muted-foreground self-start shrink-0 rounded-full bg-background p-1 border" title={msg.nickname}/>
                     <div className={cn("p-4 rounded-xl shadow-md w-full", isMyMessage ? "bg-primary text-primary-foreground rounded-br-none" : "bg-card text-card-foreground rounded-bl-none border")}>
                       <p className="text-xs text-muted-foreground/80 mb-1">
-                        {isMyMessage ? "You" : msg.nickname} (Poll)
-                        <span className="ml-2 text-xs text-muted-foreground/60">
-                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                        {isMyMessage ? "You" : msg.nickname} (Poll - Local)
+                        <span className="ml-2 text-xs text-muted-foreground/60">{formatTimestamp(msg.timestamp)}</span>
                       </p>
                       <p className="font-semibold mb-3 text-base">{msg.pollQuestion}</p>
                       <div className="space-y-3">
                         {msg.pollOptions?.map(option => {
                           const hasVotedForThisOption = userVotedOptionId === option.id;
                           return (
-                            <Card 
-                              key={option.id} 
-                              className={cn(
-                                "overflow-hidden cursor-pointer hover:shadow-lg transition-shadow",
-                                hasVotedForThisOption && "ring-2 ring-offset-1 ring-accent",
-                                userVotedOptionId && !hasVotedForThisOption && "opacity-70 cursor-not-allowed"
-                              )}
-                              onClick={() => !userVotedOptionId && handleVote(msg.id, option.id)}
-                              role="button"
-                              aria-pressed={hasVotedForThisOption}
-                            >
+                            <Card key={option.id} className={cn("overflow-hidden cursor-pointer hover:shadow-lg transition-shadow", hasVotedForThisOption && "ring-2 ring-offset-1 ring-accent", userVotedOptionId && !hasVotedForThisOption && "opacity-70 cursor-not-allowed")}
+                              onClick={() => !userVotedOptionId && handleVote(msg.id, option.id)} role="button" aria-pressed={hasVotedForThisOption}>
                               <CardContent className="p-2">
-                                <div className="relative aspect-video w-full rounded-md overflow-hidden mb-2 bg-muted">
-                                  <NextImage src={option.imageDataUri} alt={`Poll option ${option.id}`} layout="fill" objectFit="contain" data-ai-hint="poll option"/>
-                                </div>
-                                <div className="flex justify-between items-center text-sm">
-                                  <span>Votes: {option.voteCount}</span>
-                                  {hasVotedForThisOption && <CheckCircle className="h-5 w-5 text-accent"/>}
-                                </div>
+                                <div className="relative aspect-video w-full rounded-md overflow-hidden mb-2 bg-muted"><NextImage src={option.imageDataUri} alt={`Poll option ${option.id}`} layout="fill" objectFit="contain" data-ai-hint="poll option"/></div>
+                                <div className="flex justify-between items-center text-sm"><span>Votes: {option.voteCount}</span>{hasVotedForThisOption && <CheckCircle className="h-5 w-5 text-accent"/>}</div>
                               </CardContent>
                             </Card>
                           );
@@ -460,52 +425,25 @@ export default function ChatRoomPage() {
                 );
               }
 
-              // Regular message or image
+              // Regular message (Firestore) or image (local)
               const heartReactions = msg.reactions?.filter(r => r.emoji === '❤️').length || 0;
               return (
-                <div
-                  key={msg.id}
-                  className={cn(
-                    "flex items-end gap-2 max-w-[85%]",
-                    isMyMessage ? "ml-auto flex-row-reverse" : "mr-auto flex-row"
-                  )}
-                >
+                <div key={msg.id} className={cn("flex items-end gap-2 max-w-[85%]", isMyMessage ? "ml-auto flex-row-reverse" : "mr-auto flex-row")}>
                   <User className="h-8 w-8 text-muted-foreground self-start shrink-0 rounded-full bg-background p-1 border" title={msg.nickname}/>
-                  <div
-                    className={cn(
-                      "p-3 rounded-xl shadow-md",
-                      isMyMessage
-                        ? "bg-primary text-primary-foreground rounded-br-none"
-                        : "bg-card text-card-foreground rounded-bl-none border"
-                    )}
-                  >
+                  <div className={cn("p-3 rounded-xl shadow-md", isMyMessage ? "bg-primary text-primary-foreground rounded-br-none" : "bg-card text-card-foreground rounded-bl-none border")}>
                     <p className="text-xs text-muted-foreground/80 mb-0.5">
-                      {isMyMessage ? "You" : msg.nickname}
-                      <span className="ml-2 text-xs text-muted-foreground/60">
-                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      {isMyMessage ? "You" : msg.nickname} {msg.type === 'image' ? '(Image - Local)' : ''}
+                      <span className="ml-2 text-xs text-muted-foreground/60">{formatTimestamp(msg.timestamp)}</span>
                     </p>
                     {msg.type === 'image' && msg.imageDataUri && (
                       <div className="my-2">
-                        <NextImage
-                          src={msg.imageDataUri}
-                          alt={msg.text || `Image from ${msg.nickname}`}
-                          width={280} 
-                          height={280} 
-                          className="rounded-md object-contain max-w-full h-auto"
-                          data-ai-hint="chat image"
-                        />
+                        <NextImage src={msg.imageDataUri} alt={msg.text || `Image from ${msg.nickname}`} width={280} height={280} className="rounded-md object-contain max-w-full h-auto" data-ai-hint="chat image"/>
                       </div>
                     )}
                     {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
-                    {msg.type === 'image' && (
+                    {msg.type === 'image' && ( // Local reactions on local images
                       <div className="mt-2 flex items-center">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className={cn("p-1 h-auto", userHasHeartedImage ? "text-red-500" : "text-muted-foreground hover:text-red-500")}
-                          onClick={() => handleReaction(msg.id, '❤️')}
-                        >
+                        <Button variant="ghost" size="sm" className={cn("p-1 h-auto", userHasHeartedImage ? "text-red-500" : "text-muted-foreground hover:text-red-500")} onClick={() => handleReaction(msg.id, '❤️')}>
                           <Heart className={cn("h-4 w-4", userHasHeartedImage ? "fill-red-500" : "")} />
                           <span className="ml-1 text-xs">{heartReactions > 0 ? heartReactions : ''}</span>
                         </Button>
@@ -515,112 +453,44 @@ export default function ChatRoomPage() {
                 </div>
               );
             })}
-             {messages.length === 0 && (
-                <div className="text-center text-muted-foreground py-10">
-                    No messages yet. Start the conversation, send an image, or create a poll!
-                </div>
-            )}
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
 
         <CardFooter className="p-4 border-t bg-background flex flex-col items-start">
-          {/* Poll Creation Form */}
-          {isCreatingPoll && (
+          {isCreatingPoll && ( /* Poll form remains local */
             <form onSubmit={handleSendPoll} className="w-full mb-4 p-4 border rounded-lg shadow-sm bg-muted/50 space-y-4">
-              <h3 className="text-lg font-semibold text-center">Create New Poll</h3>
-              <div>
-                <Label htmlFor="poll-question">Poll Question</Label>
-                <Textarea 
-                  id="poll-question"
-                  value={pollQuestionInput}
-                  onChange={(e) => setPollQuestionInput(e.target.value)}
-                  placeholder="What's your fashion question?"
-                  required
-                  className="mt-1 bg-background"
-                />
-              </div>
+              <h3 className="text-lg font-semibold text-center">Create New Poll (Local)</h3>
+              <div><Label htmlFor="poll-question">Poll Question</Label><Textarea id="poll-question" value={pollQuestionInput} onChange={(e) => setPollQuestionInput(e.target.value)} placeholder="What's your fashion question?" required className="mt-1 bg-background"/></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[0, 1].map(index => (
-                  <div key={index} className="space-y-1">
+                {[0, 1].map(index => (<div key={index} className="space-y-1">
                     <Label htmlFor={`poll-option-${index + 1}`}>Image Option ${index + 1}</Label>
-                    <Input 
-                      id={`poll-option-${index + 1}`}
-                      type="file"
-                      accept="image/png, image/jpeg, image/webp"
-                      onChange={(e) => handlePollImageChange(index as 0 | 1, e)}
-                      ref={index === 0 ? pollOption1FileInputRef : pollOption2FileInputRef}
-                      required
-                      className="file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 bg-background"
-                    />
-                    {pollOptionPreviews[index] && (
-                      <div className="mt-2 w-full aspect-video relative rounded-md overflow-hidden border bg-background">
-                        <NextImage src={pollOptionPreviews[index]!} alt={`Preview Option ${index + 1}`} layout="fill" objectFit="contain" data-ai-hint="poll preview"/>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                    <Input id={`poll-option-${index + 1}`} type="file" accept="image/png, image/jpeg, image/webp" onChange={(e) => handlePollImageChange(index as 0 | 1, e)} ref={index === 0 ? pollOption1FileInputRef : pollOption2FileInputRef} required className="file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 bg-background"/>
+                    {pollOptionPreviews[index] && (<div className="mt-2 w-full aspect-video relative rounded-md overflow-hidden border bg-background"><NextImage src={pollOptionPreviews[index]!} alt={`Preview Option ${index + 1}`} layout="fill" objectFit="contain" data-ai-hint="poll preview"/></div>)}
+                  </div>))}
               </div>
-              <div className="flex gap-2 justify-end">
-                <Button type="button" variant="outline" onClick={() => setIsCreatingPoll(false)}>Cancel</Button>
-                <Button type="submit">Submit Poll</Button>
-              </div>
+              <div className="flex gap-2 justify-end"><Button type="button" variant="outline" onClick={() => setIsCreatingPoll(false)}>Cancel</Button><Button type="submit">Submit Poll (Local)</Button></div>
             </form>
           )}
 
-          {/* Message Input Area */}
           {!isCreatingPoll && (
             <>
-            {selectedImagePreview && (
+            {selectedImagePreview && ( /* Image preview remains local */
                 <div className="mb-2 p-2 border rounded-md relative w-20 h-20 sm:w-24 sm:h-24">
                 <NextImage src={selectedImagePreview} alt="Selected preview" layout="fill" objectFit="cover" className="rounded-md" data-ai-hint="image preview"/>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/80"
-                    onClick={clearSelectedImage}
-                >
-                    <XCircle className="h-4 w-4" />
-                </Button>
+                <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/80" onClick={clearSelectedImage}><XCircle className="h-4 w-4" /></Button>
                 </div>
             )}
             <form onSubmit={handleSendMessage} className="flex w-full items-center space-x-2">
-                <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleSingleImageInputChange} 
-                accept="image/png, image/jpeg, image/webp" 
-                className="hidden"
-                />
-                <Button 
-                variant="outline" 
-                size="icon" 
-                type="button" 
-                onClick={() => fileInputRef.current?.click()}
-                title="Add Image"
-                >
+                <input type="file" ref={fileInputRef} onChange={handleSingleImageInputChange} accept="image/png, image/jpeg, image/webp" className="hidden"/>
+                <Button variant="outline" size="icon" type="button" onClick={() => fileInputRef.current?.click()} title="Add Image (Local)">
                 <ImagePlus className="h-5 w-5" />
                 </Button>
-                <Button 
-                variant="outline" 
-                size="icon" 
-                type="button" 
-                onClick={() => setIsCreatingPoll(true)}
-                title="Create Poll"
-                >
+                <Button variant="outline" size="icon" type="button" onClick={() => setIsCreatingPoll(true)} title="Create Poll (Local)">
                 <ListPlus className="h-5 w-5" />
                 </Button>
-                <Input
-                ref={inputRef}
-                value={currentMessage}
-                onChange={(e) => setCurrentMessage(e.target.value)}
-                placeholder="Type your message, add an image, or create a poll..."
-                className="flex-1"
-                autoComplete="off"
-                />
-                <Button type="submit" size="icon" disabled={(!currentMessage.trim() && !selectedImageFile) || !nickname} aria-label="Send message">
-                <Send className="h-5 w-5" />
-                </Button>
+                <Input ref={inputRef} value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} placeholder="Type your message (real-time)..." className="flex-1" autoComplete="off"/>
+                <Button type="submit" size="icon" disabled={(!currentMessage.trim() && !selectedImageFile) || !nickname} aria-label="Send message"><Send className="h-5 w-5" /></Button>
             </form>
             </>
           )}
@@ -629,3 +499,4 @@ export default function ChatRoomPage() {
     </div>
   );
 }
+

@@ -1,4 +1,6 @@
 
+import type { Timestamp } from 'firebase/firestore';
+
 export type ClothingItem = {
   id: string;
   name: string;
@@ -25,7 +27,7 @@ export type PersonImage = {
 
 export interface ChatMessageReaction {
   nickname: string;
-  emoji: string; 
+  emoji: string;
 }
 
 export interface PollOption {
@@ -35,17 +37,16 @@ export interface PollOption {
 }
 
 export interface ChatMessage {
-  id: string;
+  id: string; // Firestore document ID
   roomId: string;
   nickname: string;
-  text?: string; // Text is now optional
-  timestamp: string;
+  text?: string;
+  timestamp: Timestamp | string; // Firestore Timestamp or ISO string for local messages
   type: 'message' | 'image' | 'poll';
-  imageDataUri?: string; // For image messages (stored as data URI)
-  reactions?: ChatMessageReaction[];
-  // For polls
+  imageDataUri?: string; // For image messages (stored as data URI, local for now)
+  reactions?: ChatMessageReaction[]; // Local for now
+  // For polls (local for now)
   pollQuestion?: string;
   pollOptions?: PollOption[];
-  // Stores { nickname: optionIdVotedFor } for this poll
-  pollVoters?: { [nickname: string]: string }; 
+  pollVoters?: { [nickname: string]: string };
 }
