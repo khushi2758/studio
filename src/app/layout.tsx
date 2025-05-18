@@ -1,8 +1,10 @@
+
 import type {Metadata} from 'next';
-import {Geist} from 'next/font/google'; // Geist_Mono removed as not explicitly requested for body
+import {Geist} from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import Header from '@/components/app/Header';
+import { AuthProvider } from '@/context/AuthContext'; // Import AuthProvider
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -22,11 +24,13 @@ export default function RootLayout({
   return (
     <html lang="en" className={geistSans.variable}>
       <body className="antialiased font-sans">
-        <Header />
-        <main className="flex-grow">
-          {children}
-        </main>
-        <Toaster />
+        <AuthProvider> {/* Wrap with AuthProvider */}
+          <Header />
+          <main className="flex-grow">
+            {children}
+          </main>
+          <Toaster />
+        </AuthProvider>
       </body>
     </html>
   );

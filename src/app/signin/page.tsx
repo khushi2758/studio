@@ -3,31 +3,34 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 
 export default function SignInPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const { toast } = useToast();
+  const { signIn, isLoading: authIsLoading } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast(); // useToast hook is already imported
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log('Sign In attempt:', { email, password });
-    toast({
-      title: "Sign In Submitted",
-      description: "This is a demo. No actual sign-in occurred.",
-    });
-    setIsLoading(false);
+    setIsSubmitting(true);
+    const success = await signIn(email, password);
+    setIsSubmitting(false);
+    if (success) {
+      router.push('/'); // Redirect to home on successful sign in
+    }
   };
+
+  const isLoading = authIsLoading || isSubmitting;
 
   return (
     <div className="container mx-auto flex min-h-[calc(100vh-10rem)] items-center justify-center p-4 md:p-8">
@@ -63,6 +66,7 @@ export default function SignInPage() {
               />
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {isLoading ? 'Signing In...' : 'Sign In'}
             </Button>
           </form>
