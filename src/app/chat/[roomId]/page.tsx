@@ -292,7 +292,7 @@ export default function ChatRoomPage() {
             </div>
             <Button variant="outline" size="sm" asChild className="shrink-0">
               <Link href="/">
-                <ArrowLeft className="mr-0 h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Home</span>
+                <ArrowLeft className="mr-0 h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Exit Room</span>
               </Link>
             </Button>
           </div>
