@@ -11,7 +11,6 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
   SheetFooter,
   SheetClose,
 } from "@/components/ui/sheet";
@@ -26,10 +25,12 @@ interface Message {
   text: string;
 }
 
+const INITIAL_AI_GREETING = "Hi there! I'm AestheFit Assistant. How can I help you with your style today?";
+
 export default function Chatbot() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { id: crypto.randomUUID(), sender: 'ai', text: "Hi there! I'm AestheFit Assistant. How can I help you with your style today?" }
+    { id: crypto.randomUUID(), sender: 'ai', text: INITIAL_AI_GREETING }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -45,10 +46,9 @@ export default function Chatbot() {
 
   useEffect(() => {
     if (isOpen) {
-      // Focus input when sheet opens
       setTimeout(() => {
         inputRef.current?.focus();
-      }, 100); // Short delay to ensure sheet is rendered
+      }, 100);
     }
   }, [isOpen]);
 
@@ -62,20 +62,38 @@ export default function Chatbot() {
       sender: 'user',
       text: currentInput,
     };
+
+    // Prepare history for the AI flow.
+    // `messages` here is the state *before* the current `userMessage` is added.
+    // The initial AI greeting is a UI element and should not be part of the LLM history
+    // if it's the first message or the only message.
+    let historyForAI: Array<{sender: 'user' | 'ai', text: string}> = [];
+    if (messages.length > 0) {
+        const startIndex = (messages.length === 1 && messages[0].sender === 'ai' && messages[0].text === INITIAL_AI_GREETING) ? 1 : 0;
+        
+        let relevantMessages = messages;
+        // If the very first message is the initial AI greeting, filter it out from history for the LLM
+        if (messages.length > 0 && messages[0].sender === 'ai' && messages[0].text === INITIAL_AI_GREETING) {
+            relevantMessages = messages.slice(1);
+        } else {
+            relevantMessages = messages;
+        }
+        
+        historyForAI = relevantMessages.map(msg => ({
+            sender: msg.sender,
+            text: msg.text,
+        }));
+    }
+    
+    // Add the user message to the UI state
     setMessages((prevMessages) => [...prevMessages, userMessage]);
     setInputValue('');
     setIsLoading(true);
 
-    // Prepare history for the AI flow (excluding the current user message just added)
-    const historyForAI = messages.map(msg => ({
-      sender: msg.sender,
-      text: msg.text,
-    }));
-
     try {
       const result = await chatWithBot({
         userInput: currentInput,
-        history: historyForAI,
+        history: historyForAI.length > 0 ? historyForAI : undefined, // Pass undefined if history is empty
       });
 
       const aiMessage: Message = {
@@ -100,7 +118,6 @@ export default function Chatbot() {
       setMessages((prevMessages) => [...prevMessages, aiErrorMessage]);
     } finally {
       setIsLoading(false);
-      // Re-focus input after AI response or error
        setTimeout(() => {
         inputRef.current?.focus();
       }, 0);
@@ -140,6 +157,8 @@ export default function Chatbot() {
                   message.sender === 'user' ? "ml-auto flex-row-reverse" : "mr-auto flex-row"
                 )}
               >
+                 {message.sender === 'ai' && <Bot className="h-6 w-6 text-muted-foreground self-start shrink-0" />}
+                 {message.sender === 'user' && <User className="h-6 w-6 text-muted-foreground self-start shrink-0" />}
                 <div
                   className={cn(
                     "p-3 rounded-xl shadow-md",
