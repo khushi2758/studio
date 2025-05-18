@@ -15,3 +15,9 @@ export type Outfit = {
   suggestion: string;
   savedAt: string; // ISO string date
 };
+
+export type PersonImage = {
+  id: string;
+  imagePreview: string; // For client-side preview
+  imageDataUri: string; // For AI processing (data:image/jpeg;base64,...)
+};
