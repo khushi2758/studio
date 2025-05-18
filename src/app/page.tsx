@@ -159,11 +159,15 @@ export default function HomePage() {
                 <CardHeader>
                   <CardTitle id="curate-title" className="text-2xl">Curate Your Outfit</CardTitle>
                   <CardDescription>
-                    Specify an occasion and let AI suggest an outfit from your wardrobe.
+                    Specify an occasion and let AI suggest an outfit and generate an image.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <OutfitCuration clothingItems={clothingItems} onSaveOutfit={handleSaveOutfit} />
+                  <OutfitCuration 
+                    clothingItems={clothingItems} 
+                    personImage={personImage} 
+                    onSaveOutfit={handleSaveOutfit} 
+                  />
                 </CardContent>
               </Card>
             </section>

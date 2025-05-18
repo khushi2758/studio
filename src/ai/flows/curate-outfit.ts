@@ -1,20 +1,21 @@
-// use server'
 
+'use server';
 /**
  * @fileOverview Outfit curation flow.
  *
- * This file defines a Genkit flow that takes a list of clothing items (as data URIs) and an occasion,
- * and returns an outfit suggestion.
+ * This file defines a Genkit flow that takes a list of clothing items (as data URIs), an occasion,
+ * and an optional person image. It returns an outfit suggestion (text) and an AI-generated image
+ * of the outfit.
  *
  * @exports curateOutfit - The main function to call for outfit curation.
  * @exports CurateOutfitInput - The input type for the curateOutfit function.
  * @exports CurateOutfitOutput - The output type for the curateOutfit function.
  */
 
-'use server';
-
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import type { GenkitMediaPart, GenkitTextPart } from 'genkit';
+
 
 const CurateOutfitInputSchema = z.object({
   clothingItems: z
@@ -27,12 +28,18 @@ const CurateOutfitInputSchema = z.object({
     )
     .describe('An array of clothing items to choose from.'),
   occasion: z.string().describe('The occasion for which the outfit is being curated.'),
+  personImageDataUri: z.string().optional().describe(
+    "An optional image of the person for try-on, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
+  ),
 });
 
 export type CurateOutfitInput = z.infer<typeof CurateOutfitInputSchema>;
 
 const CurateOutfitOutputSchema = z.object({
-  outfitSuggestion: z.string().describe('A description of the suggested outfit.'),
+  outfitSuggestion: z.string().describe('A textual description of the suggested outfit.'),
+  generatedOutfitImageUri: z.string().describe(
+    'A data URI of the AI-generated image of the outfit being worn. Expected format: "data:image/png;base64,<encoded_data>".'
+  ),
 });
 
 export type CurateOutfitOutput = z.infer<typeof CurateOutfitOutputSchema>;
@@ -41,20 +48,23 @@ export async function curateOutfit(input: CurateOutfitInput): Promise<CurateOutf
   return curateOutfitFlow(input);
 }
 
-const prompt = ai.definePrompt({
-  name: 'curateOutfitPrompt',
+const textSuggestionPrompt = ai.definePrompt({
+  name: 'textSuggestionPrompt',
   input: {schema: CurateOutfitInputSchema},
-  output: {schema: CurateOutfitOutputSchema},
+  output: {schema: z.object({outfitSuggestion: z.string().describe('A description of the suggested outfit.')})},
   prompt: `You are a personal stylist AI, helping users create outfits from their existing wardrobe.
+Given the following clothing items and occasion, suggest a stylish outfit. Be as descriptive as possible.
 
-  Given the following clothing items and occasion, suggest a stylish outfit. Be as descriptive as possible.
+Occasion: {{{occasion}}}
 
-  Occasion: {{{occasion}}}
+Clothing Items:
+{{#each clothingItems}}
+- {{media url=this}}
+{{/each}}
 
-  Clothing Items:
-  {{#each clothingItems}}
-  - {{media url=this}}
-  {{/each}}`,
+{{#if personImageDataUri}}
+(Note: A reference image of the person has been provided. You can use this to tailor the textual suggestion if appropriate, e.g., considering styles that might suit their features, but primarily focus on the clothing items and occasion for the outfit description itself.)
+{{/if}}`,
 });
 
 const curateOutfitFlow = ai.defineFlow(
@@ -63,8 +73,49 @@ const curateOutfitFlow = ai.defineFlow(
     inputSchema: CurateOutfitInputSchema,
     outputSchema: CurateOutfitOutputSchema,
   },
-  async input => {
-    const {output} = await prompt(input);
-    return output!;
+  async (input) => {
+    // 1. Get textual outfit suggestion
+    const { output: textOutput } = await textSuggestionPrompt(input);
+    if (!textOutput?.outfitSuggestion) {
+      throw new Error('Failed to generate outfit suggestion text.');
+    }
+
+    // 2. Prepare prompt for image generation
+    const imagePromptElements: (GenkitTextPart | GenkitMediaPart)[] = [
+      { text: `Generate a high-quality, visually appealing fashion model style image. A person should be wearing the following outfit: "${textOutput.outfitSuggestion}". The image should preferably be a full-body shot or at least show the outfit clearly.` }
+    ];
+
+    if (input.personImageDataUri) {
+      imagePromptElements.push({ text: "Use the following image as a reference for the person's appearance, style, or body type. Generate a new person wearing the described outfit, inspired by the reference if applicable, not an exact copy or edit of the reference image:" });
+      imagePromptElements.push({ media: { url: input.personImageDataUri } });
+    } else {
+      imagePromptElements.push({ text: "The person in the generated image can be any fashion model."});
+    }
+
+    // 3. Generate image
+    const { media, text: imageGenText } = await ai.generate({
+      model: 'googleai/gemini-2.0-flash-exp', // Specific model for image generation
+      prompt: imagePromptElements,
+      config: {
+        responseModalities: ['IMAGE', 'TEXT'], // Ensure IMAGE is requested, TEXT for any textual feedback
+        safetySettings: [
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+        ],
+      },
+    });
+
+    if (!media?.url) {
+      console.error("Image generation failed. Text response from image gen model:", imageGenText);
+      const errorMessage = imageGenText || 'Failed to generate outfit image. The model may have refused due to safety settings or other issues.';
+      throw new Error(errorMessage);
+    }
+
+    return {
+      outfitSuggestion: textOutput.outfitSuggestion,
+      generatedOutfitImageUri: media.url,
+    };
   }
 );

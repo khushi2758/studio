@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { FC } from 'react';
@@ -18,14 +19,29 @@ const OutfitCard: FC<OutfitCardProps> = ({ outfit, onRemove }) => {
   return (
     <Card className="shadow-lg flex flex-col">
       <CardHeader>
-        <div className="flex justify-between items-start">
-          <div>
+        <div className="flex justify-between items-start gap-4">
+          <div className="flex-1">
             <CardTitle className="text-xl">Outfit for: {outfit.occasion}</CardTitle>
             <CardDescription>Saved on: {new Date(outfit.savedAt).toLocaleDateString()}</CardDescription>
           </div>
-          {/* Placeholder for virtual try-on image */}
-          <div className="w-24 h-32 bg-muted rounded-md flex items-center justify-center text-muted-foreground text-xs overflow-hidden">
-             <Image src="https://placehold.co/96x128.png" alt="Virtual Try-on Placeholder" width={96} height={128} data-ai-hint="fashion model" />
+          <div className="w-24 h-32 bg-muted rounded-md flex items-center justify-center text-muted-foreground text-xs overflow-hidden relative">
+             {outfit.generatedOutfitImageUri ? (
+                <Image 
+                  src={outfit.generatedOutfitImageUri} 
+                  alt={`AI generated outfit for ${outfit.occasion}`} 
+                  layout="fill" 
+                  objectFit="contain" 
+                  data-ai-hint="fashion model"
+                />
+             ) : (
+                <Image 
+                  src="https://placehold.co/96x128.png" 
+                  alt="Outfit placeholder" 
+                  width={96} 
+                  height={128} 
+                  data-ai-hint="fashion model"
+                />
+             )}
           </div>
         </div>
       </CardHeader>

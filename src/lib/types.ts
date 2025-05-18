@@ -13,6 +13,7 @@ export type Outfit = {
   itemsUsedDataUris: string[]; // Store which specific items (by data URI) were used by AI
   itemNames: string[]; // Store names of items used for display
   suggestion: string;
+  generatedOutfitImageUri?: string; // AI-generated image of the outfit
   savedAt: string; // ISO string date
 };
 
@@ -21,3 +22,4 @@ export type PersonImage = {
   imagePreview: string; // For client-side preview
   imageDataUri: string; // For AI processing (data:image/jpeg;base64,...)
 };
+
