@@ -83,7 +83,7 @@ const curateOutfitFlow = ai.defineFlow(
     // 2. Prepare prompt for image generation
     const imagePromptElements: (GenkitTextPart | GenkitMediaPart)[] = [
       {
-        text: `Generate a high-quality, visually appealing image displaying the following outfit: "${textOutput.outfitSuggestion}". The outfit should be shown on a simple, featureless mannequin or a generic figure, not a realistic person or fashion model. Focus on clearly showcasing the clothing items. The background should be neutral or simple studio-like. Ensure the entire outfit is visible.`
+        text: `Create a clean, professional product-style image of the following outfit: "${textOutput.outfitSuggestion}". Display the outfit on a neutral, abstract mannequin or a stylized display form, suitable for an e-commerce presentation. The focus should be entirely on the clothing items, clearly showing their details and how they are worn together. Use a plain, light-colored studio background. The entire outfit must be visible.`
       }
       // The input.personImageDataUri is intentionally not added here for image generation,
       // as the request is to display the outfit on a figure/mannequin.
