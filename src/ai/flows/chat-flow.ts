@@ -50,13 +50,13 @@ const chatWithBotFlow = ai.defineFlow(
     outputSchema: ChatOutputSchema,
   },
   async (input) => {
-    // Construct the message array for Genkit, starting with system instruction
-    const messages: MessageData[] = [{ role: 'system', content: [{text: SYSTEM_INSTRUCTION}] }];
+    // Construct the message array for Genkit, EXCLUDING system instruction from here
+    const messagesForPrompt: MessageData[] = [];
 
     // Add history messages
     if (input.history) {
       input.history.forEach(msg => {
-        messages.push({
+        messagesForPrompt.push({
           role: msg.sender === 'ai' ? 'model' : 'user',
           content: [{ text: msg.text }],
         });
@@ -64,12 +64,13 @@ const chatWithBotFlow = ai.defineFlow(
     }
 
     // Add the latest user input
-    messages.push({ role: 'user', content: [{ text: input.userInput }] });
+    messagesForPrompt.push({ role: 'user', content: [{ text: input.userInput }] });
 
     const response = await ai.generate({
       // Using the default model configured in genkit.ts (e.g., gemini-2.0-flash)
-      prompt: messages,
+      prompt: messagesForPrompt, // Only history and user input here
       config: {
+        systemInstruction: { role: 'system', content: [{ text: SYSTEM_INSTRUCTION }] }, // System instruction moved here
         temperature: 0.75, // Slightly increased for more creative/conversational styling
         safetySettings: [ // Basic safety settings
           { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
