@@ -10,7 +10,7 @@ import SavedOutfits from '@/components/app/SavedOutfits';
 import PersonImageUploadForm from '@/components/app/PersonImageUploadForm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Shirt, UserCircle2 } from 'lucide-react'; 
+import { Shirt, UserCircle2 } from 'lucide-react';
 import Image from 'next/image';
 
 const MAX_ITEMS = 10;
@@ -30,6 +30,7 @@ export default function HomePage() {
     }
     const storedOutfits = localStorage.getItem('savedOutfits');
     if (storedOutfits) {
+      // Outfits loaded from storage will not have generatedOutfitImageUri
       setSavedOutfits(JSON.parse(storedOutfits));
     }
     const storedPersonImage = localStorage.getItem('personImage');
@@ -46,7 +47,17 @@ export default function HomePage() {
 
   useEffect(() => {
     if (isClient) {
-      localStorage.setItem('savedOutfits', JSON.stringify(savedOutfits));
+      // Create a version of savedOutfits without the large image data for localStorage
+      const outfitsForStorage = savedOutfits.map(outfit => {
+        const { generatedOutfitImageUri, ...rest } = outfit; // Destructure to remove it
+        return rest; // Return outfit object without the image URI for storage
+      });
+      try {
+        localStorage.setItem('savedOutfits', JSON.stringify(outfitsForStorage));
+      } catch (error) {
+        console.error("Error saving outfits to localStorage:", error);
+        // Potentially notify user or handle more gracefully if even stripped down data is too large
+      }
     }
   }, [savedOutfits, isClient]);
 
@@ -71,6 +82,7 @@ export default function HomePage() {
   };
 
   const handleSaveOutfit = (outfit: Outfit) => {
+    // The outfit object here will contain generatedOutfitImageUri from curation
     setSavedOutfits((prevOutfits) => [outfit, ...prevOutfits]);
   };
 
