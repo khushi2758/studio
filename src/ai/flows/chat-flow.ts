@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview AI Chatbot flow.
@@ -10,7 +9,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
-import type { MessageData } from 'genkit';
+import type { MessageData } from 'genkit'; // Keep this import even if not used by AI to avoid breaking changes if AI is re-enabled
 
 // Schema for individual messages in the history from the client's perspective
 const ChatMessageSchema = z.object({
@@ -33,6 +32,7 @@ export async function chatWithBot(input: ChatInput): Promise<ChatOutput> {
   return chatWithBotFlow(input);
 }
 
+// SYSTEM_INSTRUCTION is not used in this hardcoded version but kept for potential future re-enablement of AI
 const SYSTEM_INSTRUCTION = `You are AestheFit Assistant, a friendly, knowledgeable, and highly skilled personal stylist AI. Your primary goal is to provide an engaging and helpful conversational experience, assisting users with all their fashion needs.
 
 Your capabilities include:
@@ -50,56 +50,13 @@ const chatWithBotFlow = ai.defineFlow(
     outputSchema: ChatOutputSchema,
   },
   async (input) => {
-    // const userInputNormalized = input.userInput.trim().toLowerCase();
+    const userInputNormalized = input.userInput.trim().toLowerCase();
 
-    // Removed hardcoded responses to allow AI to handle queries.
-    // if (userInputNormalized === 'hi') {
-    //   return { aiResponse: "How can I help you?" };
-    // } else {
-    //   return { aiResponse: "I don't understand that yet." };
-    // }
-
-    const messagesForPrompt: MessageData[] = [];
-    if (input.history && input.history.length > 0) {
-      input.history.forEach(msg => {
-        messagesForPrompt.push({
-          role: msg.sender === 'user' ? 'user' : 'model',
-          content: [{ text: msg.text }]
-        });
-      });
+    if (userInputNormalized === 'hi') {
+      return { aiResponse: "How can I help you?" };
+    } else {
+      return { aiResponse: "I don't understand that yet." };
     }
-    messagesForPrompt.push({ role: 'user', content: [{ text: input.userInput }] });
-
-    const response = await ai.generate({
-      model: 'googleai/gemini-2.0-flash', // Explicitly specify the model
-      prompt: messagesForPrompt, 
-      config: {
-        systemInstruction: { role: 'system', content: [{ text: SYSTEM_INSTRUCTION }] },
-        temperature: 0.75, // Slightly increased for more creative/natural responses
-        safetySettings: [
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-        ],
-      },
-    });
-
-    const aiResponse = response.text;
-    if (!aiResponse) {
-      const candidate = response.candidates[0];
-      const finishReason = candidate?.finishReason;
-      const finishMessage = candidate?.finishMessage || 'No specific finish message provided.';
-      const safetyRatings = candidate?.safetyRatings ? JSON.stringify(candidate.safetyRatings) : 'No safety ratings available.';
-      
-      console.error(`AI did not return a text response. Finish Reason: ${finishReason}. Finish Message: ${finishMessage}. Safety Ratings: ${safetyRatings}. Full candidate: ${JSON.stringify(candidate)}`);
-
-      if (finishReason === 'SAFETY') {
-         throw new Error('My response was blocked due to safety settings. Could you please rephrase your message?');
-      }
-      throw new Error(`I'm having trouble generating a response right now (Finish Reason: ${finishReason}). Please try again or rephrase your message.`);
-    }
-    return { aiResponse };
+    // AI generation logic is bypassed by the hardcoded responses above.
   }
 );
-
