@@ -68,6 +68,8 @@ const chatWithBotFlow = ai.defineFlow(
       return { aiResponse: "Go for a flowy sundress or a stylish swimsuit with a cover-up and comfy sandals." };
     } else if (userInputNormalized === "suggest an outfit for winter.") {
       return { aiResponse: "Layer up with a cozy sweater, a long coat, skinny jeans, and ankle boots. Add a scarf and gloves for extra warmth." };
+    } else if (userInputNormalized === "thank you") {
+      return { aiResponse: "Anytime! Let me know if you need more fashion tips 💁‍♀️" };
     }
      else {
       return { aiResponse: "I don't understand that yet." };
