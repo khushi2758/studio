@@ -33,6 +33,7 @@ export async function chatWithBot(input: ChatInput): Promise<ChatOutput> {
   return chatWithBotFlow(input);
 }
 
+// SYSTEM_INSTRUCTION is kept for potential future use but not directly used with the hardcoded logic below.
 const SYSTEM_INSTRUCTION = `You are AestheFit Assistant, a friendly, knowledgeable, and highly skilled personal stylist AI. Your primary goal is to provide an engaging and helpful conversational experience, assisting users with all their fashion needs.
 
 Your capabilities include:
@@ -50,27 +51,24 @@ const chatWithBotFlow = ai.defineFlow(
     outputSchema: ChatOutputSchema,
   },
   async (input) => {
-    // Diagnostic step: Simplify the prompt to only include the current user's input.
-    // The history processing is temporarily bypassed to isolate the error.
+    const userInputNormalized = input.userInput.trim().toLowerCase();
+
+    if (userInputNormalized === 'hi') {
+      return { aiResponse: "How can I help you?" };
+    } else {
+      return { aiResponse: "I don't understand that yet." };
+    }
+
+    // The original AI generation logic is bypassed by the conditional returns above.
+    // It's kept here for reference or if you want to revert to more dynamic AI responses later.
+    /*
     const simplifiedPrompt: MessageData[] = [
       { role: 'user', content: [{ text: input.userInput }] }
     ];
 
-    // Original messagesForPrompt construction (commented out for diagnosis)
-    // const messagesForPrompt: MessageData[] = [];
-    // if (input.history) {
-    //   input.history.forEach(msg => {
-    //     messagesForPrompt.push({
-    //       role: msg.sender === 'ai' ? 'model' : 'user',
-    //       content: [{ text: msg.text }],
-    //     });
-    //   });
-    // }
-    // messagesForPrompt.push({ role: 'user', content: [{ text: input.userInput }] });
-
     const response = await ai.generate({
       model: 'googleai/gemini-2.0-flash', // Explicitly specify the model
-      prompt: simplifiedPrompt, // Using the simplified prompt
+      prompt: simplifiedPrompt,
       config: {
         systemInstruction: { role: 'system', content: [{ text: SYSTEM_INSTRUCTION }] },
         temperature: 0.75,
@@ -89,13 +87,12 @@ const chatWithBotFlow = ai.defineFlow(
       if (candidate?.finishReason === 'SAFETY') {
          throw new Error('AI response was blocked due to safety settings. Please rephrase your message or adjust safety configurations if appropriate.');
       }
-      // Log more details if available
       const finishMessage = candidate?.finishMessage || 'No specific finish message provided.';
       const safetyRatings = candidate?.safetyRatings ? JSON.stringify(candidate.safetyRatings) : 'No safety ratings available.';
       console.error(`AI did not return a text response. Finish Reason: ${candidate?.finishReason}. Finish Message: ${finishMessage}. Safety Ratings: ${safetyRatings}. Full candidate: ${JSON.stringify(candidate)}`);
       throw new Error(`AI did not return a text response. Finish Reason: ${candidate?.finishReason}. Please check server logs for more details.`);
     }
     return { aiResponse };
+    */
   }
 );
-
