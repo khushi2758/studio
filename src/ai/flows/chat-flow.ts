@@ -33,7 +33,6 @@ export async function chatWithBot(input: ChatInput): Promise<ChatOutput> {
   return chatWithBotFlow(input);
 }
 
-// SYSTEM_INSTRUCTION is kept for potential future use but not directly used with the hardcoded logic below.
 const SYSTEM_INSTRUCTION = `You are AestheFit Assistant, a friendly, knowledgeable, and highly skilled personal stylist AI. Your primary goal is to provide an engaging and helpful conversational experience, assisting users with all their fashion needs.
 
 Your capabilities include:
@@ -51,27 +50,32 @@ const chatWithBotFlow = ai.defineFlow(
     outputSchema: ChatOutputSchema,
   },
   async (input) => {
-    const userInputNormalized = input.userInput.trim().toLowerCase();
+    // const userInputNormalized = input.userInput.trim().toLowerCase();
 
-    if (userInputNormalized === 'hi') {
-      return { aiResponse: "How can I help you?" };
-    } else {
-      return { aiResponse: "I don't understand that yet." };
+    // Removed hardcoded responses to allow AI to handle queries.
+    // if (userInputNormalized === 'hi') {
+    //   return { aiResponse: "How can I help you?" };
+    // } else {
+    //   return { aiResponse: "I don't understand that yet." };
+    // }
+
+    const messagesForPrompt: MessageData[] = [];
+    if (input.history && input.history.length > 0) {
+      input.history.forEach(msg => {
+        messagesForPrompt.push({
+          role: msg.sender === 'user' ? 'user' : 'model',
+          content: [{ text: msg.text }]
+        });
+      });
     }
-
-    // The original AI generation logic is bypassed by the conditional returns above.
-    // It's kept here for reference or if you want to revert to more dynamic AI responses later.
-    /*
-    const simplifiedPrompt: MessageData[] = [
-      { role: 'user', content: [{ text: input.userInput }] }
-    ];
+    messagesForPrompt.push({ role: 'user', content: [{ text: input.userInput }] });
 
     const response = await ai.generate({
       model: 'googleai/gemini-2.0-flash', // Explicitly specify the model
-      prompt: simplifiedPrompt,
+      prompt: messagesForPrompt, 
       config: {
         systemInstruction: { role: 'system', content: [{ text: SYSTEM_INSTRUCTION }] },
-        temperature: 0.75,
+        temperature: 0.75, // Slightly increased for more creative/natural responses
         safetySettings: [
           { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
           { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
@@ -84,15 +88,18 @@ const chatWithBotFlow = ai.defineFlow(
     const aiResponse = response.text;
     if (!aiResponse) {
       const candidate = response.candidates[0];
-      if (candidate?.finishReason === 'SAFETY') {
-         throw new Error('AI response was blocked due to safety settings. Please rephrase your message or adjust safety configurations if appropriate.');
-      }
+      const finishReason = candidate?.finishReason;
       const finishMessage = candidate?.finishMessage || 'No specific finish message provided.';
       const safetyRatings = candidate?.safetyRatings ? JSON.stringify(candidate.safetyRatings) : 'No safety ratings available.';
-      console.error(`AI did not return a text response. Finish Reason: ${candidate?.finishReason}. Finish Message: ${finishMessage}. Safety Ratings: ${safetyRatings}. Full candidate: ${JSON.stringify(candidate)}`);
-      throw new Error(`AI did not return a text response. Finish Reason: ${candidate?.finishReason}. Please check server logs for more details.`);
+      
+      console.error(`AI did not return a text response. Finish Reason: ${finishReason}. Finish Message: ${finishMessage}. Safety Ratings: ${safetyRatings}. Full candidate: ${JSON.stringify(candidate)}`);
+
+      if (finishReason === 'SAFETY') {
+         throw new Error('My response was blocked due to safety settings. Could you please rephrase your message?');
+      }
+      throw new Error(`I'm having trouble generating a response right now (Finish Reason: ${finishReason}). Please try again or rephrase your message.`);
     }
     return { aiResponse };
-    */
   }
 );
+
