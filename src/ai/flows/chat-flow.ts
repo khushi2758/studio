@@ -62,7 +62,14 @@ const chatWithBotFlow = ai.defineFlow(
       return { aiResponse: "Trends this season include oversized blazers, monochrome outfits, pastel tones, and statement accessories." };
     } else if (userInputNormalized === "how do i style high-waisted jeans?") {
       return { aiResponse: "Pair them with a crop top, a tucked-in blouse, or a fitted shirt. Add heels or sneakers depending on the occasion." };
-    } else {
+    } else if (userInputNormalized === "i have a date tonight, what should i wear?") {
+      return { aiResponse: "Choose something that makes you feel confident and comfortable. A midi dress or chic top with tailored pants is a great choice." };
+    } else if (userInputNormalized === "what should i wear to a beach party?") {
+      return { aiResponse: "Go for a flowy sundress or a stylish swimsuit with a cover-up and comfy sandals." };
+    } else if (userInputNormalized === "suggest an outfit for winter.") {
+      return { aiResponse: "Layer up with a cozy sweater, a long coat, skinny jeans, and ankle boots. Add a scarf and gloves for extra warmth." };
+    }
+     else {
       return { aiResponse: "I don't understand that yet." };
     }
     // AI generation logic is bypassed by the hardcoded responses above.
