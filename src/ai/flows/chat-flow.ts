@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview AI Chatbot flow.
@@ -9,7 +10,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
-import type { MessageData } from 'genkit'; // Keep this import even if not used by AI to avoid breaking changes if AI is re-enabled
+import type { MessageData, GenkitTextPart } from 'genkit'; // Keep this import even if not used by AI to avoid breaking changes if AI is re-enabled
 
 // Schema for individual messages in the history from the client's perspective
 const ChatMessageSchema = z.object({
@@ -52,8 +53,15 @@ const chatWithBotFlow = ai.defineFlow(
   async (input) => {
     const userInputNormalized = input.userInput.trim().toLowerCase();
 
+    // Specific Q&A pairs
     if (userInputNormalized === 'hi') {
       return { aiResponse: "How can I help you?" };
+    } else if (userInputNormalized === "what should i wear for a wedding?") {
+      return { aiResponse: "For a wedding, consider wearing a formal or semi-formal outfit. A classy dress or a tailored jumpsuit works well. Avoid white unless it's specified in the dress code." };
+    } else if (userInputNormalized === "what's trending in fashion right now?") {
+      return { aiResponse: "Trends this season include oversized blazers, monochrome outfits, pastel tones, and statement accessories." };
+    } else if (userInputNormalized === "how do i style high-waisted jeans?") {
+      return { aiResponse: "Pair them with a crop top, a tucked-in blouse, or a fitted shirt. Add heels or sneakers depending on the occasion." };
     } else {
       return { aiResponse: "I don't understand that yet." };
     }
