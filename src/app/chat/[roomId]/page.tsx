@@ -96,25 +96,15 @@ export default function ChatRoomPage() {
         const data = doc.data();
         firestoreMessages.push({
           id: doc.id,
-          roomId: data.roomId,
-          nickname: data.nickname,
-          text: data.text,
-          timestamp: data.timestamp, // This should be a Firestore Timestamp object
-          type: data.type,
-          // Note: imageDataUri, reactions, poll data are not typically stored directly in Firestore text messages
-          // For this example, we assume they might be if those types are handled by Firestore
-          imageDataUri: data.imageDataUri,
-          reactions: data.reactions,
-          pollQuestion: data.pollQuestion,
-          pollOptions: data.pollOptions,
-          pollVoters: data.pollVoters,
-        } as ChatMessage); // More specific mapping to ensure all fields
+          ...data,
+          timestamp: data.timestamp, // Firestore Timestamp
+        } as ChatMessage);
       });
       setMessages(firestoreMessages);
       setIsLoadingMessages(false);
     }, (error) => {
       console.error("Error fetching messages from Firestore:", error);
-      toast({ title: "Error loading chat", description: "Could not connect to fetch messages. Ensure Firebase is configured correctly.", variant: "destructive"});
+      toast({ title: "Error loading chat", description: "Could not connect to fetch messages.", variant: "destructive"});
       setIsLoadingMessages(false);
     });
 
@@ -215,35 +205,24 @@ export default function ChatRoomPage() {
         // Automated bot responses
         const lowerCaseMessage = userMessageContent.toLowerCase();
         if (lowerCaseMessage === 'hi') {
-          try {
-            await addDoc(messagesColRef, {
-              roomId, nickname: 'FashionPal', text: 'Hello there! 👋',
-              timestamp: serverTimestamp(), type: 'message',
-            });
-          } catch (botError) {
-            console.error("Error sending FashionPal's 'hi' message:", botError);
-            toast({title: "Bot Error", description: "FashionPal could not send a reply.", variant: "destructive"})
-          }
+          await addDoc(messagesColRef, {
+            roomId, nickname: 'FashionPal', text: 'hi',
+            timestamp: serverTimestamp(), type: 'message',
+          });
         } else if (lowerCaseMessage === 'help me choose my outfit for today') {
           setIsTypingBotMessage(true);
           setTimeout(async () => {
-            try {
-              await addDoc(messagesColRef, {
-                roomId, nickname: 'FashionPal', text: 'sure let\'s see the options',
-                timestamp: serverTimestamp(), type: 'message',
-              });
-            } catch (botError) {
-                console.error("Error sending FashionPal's 'options' message:", botError);
-                toast({title: "Bot Error", description: "FashionPal could not send options reply.", variant: "destructive"})
-            } finally {
-              setIsTypingBotMessage(false);
-            }
+            await addDoc(messagesColRef, {
+              roomId, nickname: 'FashionPal', text: 'sure let\'s see the options',
+              timestamp: serverTimestamp(), type: 'message',
+            });
+            setIsTypingBotMessage(false);
           }, 5000);
         }
 
       } catch (error) {
         console.error("Error sending message to Firestore:", error);
-        toast({ title: "Send Error", description: "Could not send message. Check console & Firebase setup.", variant: "destructive" });
+        toast({ title: "Send Error", description: "Could not send message. Check Firebase setup.", variant: "destructive" });
       }
     }
   };
@@ -253,8 +232,6 @@ export default function ChatRoomPage() {
     setMessages(prevMessages =>
       prevMessages.map(msg => {
         if (msg.id === messageId) {
-          // For now, reactions are local to the client, even for Firestore messages.
-          // To make reactions real-time, this would need to update Firestore.
           const existingReactions = msg.reactions || [];
           const userReactionIndex = existingReactions.findIndex(
             r => r.nickname === reactorNickname && r.emoji === emoji
@@ -262,7 +239,6 @@ export default function ChatRoomPage() {
           if (userReactionIndex > -1) { // User is un-reacting
             return { ...msg, reactions: existingReactions.filter((_, index) => index !== userReactionIndex) };
           } else { // User is adding a new reaction
-             // If it's a different reaction from the same user, remove their old one first (optional)
             const withoutOldReaction = existingReactions.filter(r => !(r.nickname === reactorNickname));
             return { ...msg, reactions: [...withoutOldReaction, { nickname: reactorNickname, emoji }] };
           }
@@ -320,19 +296,11 @@ export default function ChatRoomPage() {
     if (!nickname) return;
     setMessages(prevMessages =>
       prevMessages.map(msg => {
-        if (msg.id === messageId && msg.type === 'poll' && msg.pollOptions && msg.pollVoters) { // Check if it's a local message
-           if (msg.pollVoters[nickname]) { // User has already voted in this poll
-             // If they clicked the option they already voted for, unvote (optional)
-             // if (msg.pollVoters[nickname] === optionIdToVoteFor) {
-             //   const updatedOptions = msg.pollOptions.map(opt => opt.id === optionIdToVoteFor ? { ...opt, voteCount: opt.voteCount - 1 } : opt);
-             //   const { [nickname]: _, ...remainingVoters } = msg.pollVoters;
-             //   return { ...msg, pollOptions: updatedOptions, pollVoters: remainingVoters };
-             // } else {
+        if (msg.id === messageId && msg.type === 'poll' && msg.pollOptions && msg.pollVoters) {
+           if (msg.pollVoters[nickname]) {
                 toast({ title: "Already Voted", description: "You can only vote once per poll.", variant: "default" });
                 return msg;
-             // }
           }
-          // New vote
           const updatedOptions = msg.pollOptions.map(opt => opt.id === optionIdToVoteFor ? { ...opt, voteCount: opt.voteCount + 1 } : opt);
           const updatedVoters = { ...msg.pollVoters, [nickname]: optionIdToVoteFor };
           return { ...msg, pollOptions: updatedOptions, pollVoters: updatedVoters };
@@ -378,26 +346,19 @@ export default function ChatRoomPage() {
     );
   }
 
-  const formatTimestamp = (timestampValue: Timestamp | string | undefined | null): string => {
-    if (!timestampValue) return '...'; // Handle null or undefined early
-
-    // Check if it's a Firestore Timestamp object
-    if (typeof timestampValue === 'object' && 'toDate' in timestampValue && typeof (timestampValue as Timestamp).toDate === 'function') {
+  const formatTimestamp = (timestamp: Timestamp | string | undefined | null): string => {
+    if (!timestamp) return '...';
+    if (typeof timestamp === 'string') { // Local message (ISO string)
+      return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    // Firestore Timestamp or potentially unresolved serverTimestamp
+    if (typeof timestamp === 'object' && 'seconds' in timestamp && 'nanoseconds' in timestamp) {
       try {
-        return (timestampValue as Timestamp).toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return (timestamp as Timestamp).toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       } catch (e) {
-        console.error("Error formatting Firestore Timestamp:", e, timestampValue);
-        return 'error'; // Or some other error indicator
+        return 'invalid date';
       }
     }
-    // Check if it's an ISO string (likely for local messages)
-    if (typeof timestampValue === 'string') {
-      const date = new Date(timestampValue);
-      if (!isNaN(date.getTime())) { // Check if it's a valid date string
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      }
-    }
-    // Fallback if the timestamp isn't fully resolved or recognized yet
     return 'sending...';
   };
 
@@ -469,17 +430,14 @@ export default function ChatRoomPage() {
                 );
               }
 
-              // Regular message (Firestore) or image (local)
               const heartReactions = msg.reactions?.filter(r => r.emoji === '❤️').length || 0;
               return (
-                <div key={msg.id} className={cn("flex items-end gap-2 max-w-[85%]", (isMyMessage && !isFashionPalMessage) ? "ml-auto flex-row-reverse" : "mr-auto flex-row")}>
+                <div key={msg.id} className={cn("flex items-end gap-2 max-w-[85%]", isMyMessage ? "ml-auto flex-row-reverse" : "mr-auto flex-row")}>
                   <User className="h-8 w-8 text-muted-foreground self-start shrink-0 rounded-full bg-background p-1 border" title={msg.nickname}/>
                   <div className={cn("p-3 rounded-xl shadow-md", 
-                    (isMyMessage && !isFashionPalMessage) ? "bg-primary text-primary-foreground rounded-br-none" : 
-                    isFashionPalMessage ? "bg-accent/30 text-accent-foreground rounded-bl-none border border-accent/50" :
-                    "bg-card text-card-foreground rounded-bl-none border")}>
+                    isMyMessage ? "bg-primary text-primary-foreground rounded-br-none" : "bg-card text-card-foreground rounded-bl-none border")}>
                     <p className="text-xs text-muted-foreground/80 mb-0.5">
-                      {(isMyMessage && !isFashionPalMessage) ? "You" : msg.nickname} {msg.type === 'image' ? '(Image - Local)' : ''}
+                      {isMyMessage ? "You" : msg.nickname} {msg.type === 'image' ? '(Image - Local)' : ''}
                       <span className="ml-2 text-xs text-muted-foreground/60">{formatTimestamp(msg.timestamp)}</span>
                     </p>
                     {msg.type === 'image' && msg.imageDataUri && (
@@ -503,7 +461,7 @@ export default function ChatRoomPage() {
             {isTypingBotMessage && (
               <div className="flex items-end gap-2 max-w-[85%] mr-auto flex-row">
                 <User className="h-8 w-8 text-muted-foreground self-start shrink-0 rounded-full bg-background p-1 border" title="FashionPal"/>
-                <div className="p-3 rounded-xl shadow-md bg-accent/30 text-accent-foreground rounded-bl-none border border-accent/50">
+                <div className="p-3 rounded-xl shadow-md bg-muted text-foreground rounded-bl-none border">
                   <p className="text-xs text-muted-foreground/80 mb-0.5">FashionPal</p>
                   <div className="flex items-center space-x-1">
                     <span className="text-sm">typing</span>
@@ -558,5 +516,3 @@ export default function ChatRoomPage() {
     </div>
   );
 }
-
-    
