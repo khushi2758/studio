@@ -12,11 +12,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import type { ChatMessage, ChatMessageReaction, PollOption } from '@/lib/types';
-import { ArrowLeft, Send, User, ImagePlus, XCircle, Heart, Vote, ListPlus, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Send, User, ImagePlus, XCircle, Heart, ListPlus, CheckCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
-import { db } from '@/lib/firebase'; // Import Firestore instance
-import { collection, addDoc, query, orderBy, onSnapshot, Timestamp, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { collection, addDoc, query, orderBy, onSnapshot, Timestamp, serverTimestamp } from 'firebase/firestore';
 
 const MAX_IMAGE_SIZE_MB = 2;
 const MAX_RECENT_ROOMS = 5;
@@ -44,7 +44,6 @@ export default function ChatRoomPage() {
   const [isLoadingNickname, setIsLoadingNickname] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
 
-
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
 
@@ -54,6 +53,9 @@ export default function ChatRoomPage() {
   const [pollOptionPreviews, setPollOptionPreviews] = useState<[string | null, string | null]>([null, null]);
   const pollOption1FileInputRef = useRef<HTMLInputElement>(null);
   const pollOption2FileInputRef = useRef<HTMLInputElement>(null);
+
+  const [isTypingBotMessage, setIsTypingBotMessage] = useState(false);
+
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -68,7 +70,6 @@ export default function ChatRoomPage() {
       }
       setIsLoadingNickname(false);
 
-      // Save to recent rooms (localStorage)
       try {
         const recentRoomsRaw = localStorage.getItem(RECENT_ROOMS_KEY);
         let recentRooms: string[] = recentRoomsRaw ? JSON.parse(recentRoomsRaw) : [];
@@ -82,7 +83,6 @@ export default function ChatRoomPage() {
     }
   }, [roomId]);
 
-  // Firestore real-time listener for messages
  useEffect(() => {
     if (!roomId || !isClient) return;
 
@@ -96,9 +96,19 @@ export default function ChatRoomPage() {
         const data = doc.data();
         firestoreMessages.push({
           id: doc.id,
-          ...data,
-          // type assertion for timestamp as it comes from firestore
-        } as ChatMessage);
+          roomId: data.roomId,
+          nickname: data.nickname,
+          text: data.text,
+          timestamp: data.timestamp, // This should be a Firestore Timestamp object
+          type: data.type,
+          // Note: imageDataUri, reactions, poll data are not typically stored directly in Firestore text messages
+          // For this example, we assume they might be if those types are handled by Firestore
+          imageDataUri: data.imageDataUri,
+          reactions: data.reactions,
+          pollQuestion: data.pollQuestion,
+          pollOptions: data.pollOptions,
+          pollVoters: data.pollVoters,
+        } as ChatMessage); // More specific mapping to ensure all fields
       });
       setMessages(firestoreMessages);
       setIsLoadingMessages(false);
@@ -108,7 +118,7 @@ export default function ChatRoomPage() {
       setIsLoadingMessages(false);
     });
 
-    return () => unsubscribe(); // Cleanup listener on component unmount
+    return () => unsubscribe();
   }, [roomId, isClient, toast]);
 
 
@@ -122,7 +132,7 @@ export default function ChatRoomPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  useEffect(scrollToBottom, [messages]);
+  useEffect(scrollToBottom, [messages, isTypingBotMessage]);
 
   useEffect(() => {
     if (!isLoadingNickname && nickname && inputRef.current && !isCreatingPoll) {
@@ -142,9 +152,6 @@ export default function ChatRoomPage() {
       });
     }
   };
-
-  // --- Image and Poll related functions will remain largely local for now ---
-  // --- Or they would need significant changes to integrate with Firebase Storage / more complex Firestore structures ---
 
   const handleSingleImageInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -168,86 +175,106 @@ export default function ChatRoomPage() {
     e.preventDefault();
     if ((!currentMessage.trim() && !selectedImageFile) || !nickname || !roomId) return;
 
+    const messagesColRef = collection(db, 'chatRooms', roomId, 'messages');
+
     if (selectedImageFile) {
-      // IMAGE SENDING LOGIC (CURRENTLY LOCAL)
-      // For real-time, this would upload to Firebase Storage, then save URL to Firestore.
-      // For now, we'll keep it local or skip real-time for images to simplify.
-      // Let's make images local for now.
       toast({
         title: "Image Sent (Locally)",
-        description: "Image sharing is currently local to your browser and not real-time. Text messages are real-time.",
+        description: "Image sharing is local to your browser. Text messages are real-time.",
         variant: "default",
         duration: 8000,
       });
       try {
         const imageDataUri = await fileToDataUri(selectedImageFile);
         const localImageMessage: ChatMessage = {
-          id: crypto.randomUUID(), // Temp ID for local display
-          roomId,
-          nickname,
+          id: crypto.randomUUID(), roomId, nickname,
           text: currentMessage.trim() || undefined,
-          timestamp: new Date().toISOString(), // For local sorting, Firestore uses serverTimestamp
-          type: 'image',
-          imageDataUri: imageDataUri,
-          reactions: [],
+          timestamp: new Date().toISOString(), type: 'image', imageDataUri, reactions: [],
         };
-        // Add to local messages for immediate display, but it won't go to Firestore
-        setMessages(prev => [...prev, localImageMessage]); 
+        setMessages(prev => [...prev, localImageMessage]);
+        // FashionPal reacts to local image
+        handleReaction(localImageMessage.id, '❤️', 'FashionPal');
         setCurrentMessage('');
         clearSelectedImage();
       } catch (error) {
         console.error("Error converting image to data URI:", error);
         toast({ title: "Image Error", description: "Could not process the image.", variant: "destructive" });
       }
-      return; // End here for local image handling
+      return;
     }
 
-    // Text message sending (to Firestore)
     if (currentMessage.trim()) {
+      const userMessageContent = currentMessage.trim();
       try {
-        const messagesColRef = collection(db, 'chatRooms', roomId, 'messages');
         await addDoc(messagesColRef, {
-          roomId,
-          nickname,
-          text: currentMessage.trim(),
-          timestamp: serverTimestamp(), // Firestore server-side timestamp
-          type: 'message',
+          roomId, nickname, text: userMessageContent,
+          timestamp: serverTimestamp(), type: 'message',
         });
-        setCurrentMessage('');
+        setCurrentMessage(''); // Clear input after successful send
+
+        // Automated bot responses
+        const lowerCaseMessage = userMessageContent.toLowerCase();
+        if (lowerCaseMessage === 'hi') {
+          try {
+            await addDoc(messagesColRef, {
+              roomId, nickname: 'FashionPal', text: 'Hello there! 👋',
+              timestamp: serverTimestamp(), type: 'message',
+            });
+          } catch (botError) {
+            console.error("Error sending FashionPal's 'hi' message:", botError);
+            toast({title: "Bot Error", description: "FashionPal could not send a reply.", variant: "destructive"})
+          }
+        } else if (lowerCaseMessage === 'help me choose my outfit for today') {
+          setIsTypingBotMessage(true);
+          setTimeout(async () => {
+            try {
+              await addDoc(messagesColRef, {
+                roomId, nickname: 'FashionPal', text: 'sure let\'s see the options',
+                timestamp: serverTimestamp(), type: 'message',
+              });
+            } catch (botError) {
+                console.error("Error sending FashionPal's 'options' message:", botError);
+                toast({title: "Bot Error", description: "FashionPal could not send options reply.", variant: "destructive"})
+            } finally {
+              setIsTypingBotMessage(false);
+            }
+          }, 5000);
+        }
+
       } catch (error) {
         console.error("Error sending message to Firestore:", error);
-        toast({ title: "Send Error", description: "Could not send message.", variant: "destructive" });
+        toast({ title: "Send Error", description: "Could not send message. Check console & Firebase setup.", variant: "destructive" });
       }
     }
   };
 
-
-  // Reactions: Stays local for now. Real-time reactions would need Firestore updates.
-   const handleReaction = (messageId: string, emoji: string) => {
-    if (!nickname) return;
-    // This function would need to update Firestore for real-time reactions.
-    // For now, it only updates local state if the message is local.
-    // If message is from Firestore, this reaction won't persist or be shared.
+   const handleReaction = (messageId: string, emoji: string, reactorNickname: string = nickname) => {
+    if (!reactorNickname) return;
     setMessages(prevMessages =>
       prevMessages.map(msg => {
-        if (msg.id === messageId && !msg.timestamp.hasOwnProperty('seconds')) { // Check if it's a local message
+        if (msg.id === messageId) {
+          // For now, reactions are local to the client, even for Firestore messages.
+          // To make reactions real-time, this would need to update Firestore.
           const existingReactions = msg.reactions || [];
           const userReactionIndex = existingReactions.findIndex(
-            r => r.nickname === nickname && r.emoji === emoji
+            r => r.nickname === reactorNickname && r.emoji === emoji
           );
-          if (userReactionIndex > -1) {
+          if (userReactionIndex > -1) { // User is un-reacting
             return { ...msg, reactions: existingReactions.filter((_, index) => index !== userReactionIndex) };
-          } else {
-            return { ...msg, reactions: [...existingReactions, { nickname, emoji }] };
+          } else { // User is adding a new reaction
+             // If it's a different reaction from the same user, remove their old one first (optional)
+            const withoutOldReaction = existingReactions.filter(r => !(r.nickname === reactorNickname));
+            return { ...msg, reactions: [...withoutOldReaction, { nickname: reactorNickname, emoji }] };
           }
         }
         return msg;
       })
     );
-    toast({ title: "Reaction (Local)", description: "Reactions on images/polls are local for now."});
+    if(reactorNickname === nickname){ // Only toast for user's own reactions
+        toast({ title: "Reaction (Local)", description: "Reactions are local for now."});
+    }
   };
 
-  // Polls: Stays local for now. Real-time polls are complex.
   const handlePollImageChange = (index: 0 | 1, e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -266,7 +293,6 @@ export default function ChatRoomPage() {
 
   const handleSendPoll = async (e: FormEvent) => {
     e.preventDefault();
-    // Polls will be local for now.
     toast({ title: "Poll Created (Locally)", description: "Polls are local to your browser for now.", variant: "default", duration: 9000 });
     if (!pollQuestionInput.trim() || !pollOptionFiles[0] || !pollOptionFiles[1] || !nickname) return;
     try {
@@ -278,7 +304,7 @@ export default function ChatRoomPage() {
       ];
       const newPollMessage: ChatMessage = {
         id: crypto.randomUUID(), roomId, nickname, timestamp: new Date().toISOString(),
-        type: 'poll', pollQuestion: pollQuestionInput.trim(), pollOptions, pollVoters: {},
+        type: 'poll', pollQuestion: pollQuestionInput.trim(), pollOptions, pollVoters: {}, reactions: [],
       };
       setMessages(prev => [...prev, newPollMessage]);
       setIsCreatingPoll(false); setPollQuestionInput(''); setPollOptionFiles([null, null]); setPollOptionPreviews([null, null]);
@@ -292,14 +318,21 @@ export default function ChatRoomPage() {
 
   const handleVote = (messageId: string, optionIdToVoteFor: string) => {
     if (!nickname) return;
-    // Voting logic will be local for now.
     setMessages(prevMessages =>
       prevMessages.map(msg => {
-        if (msg.id === messageId && msg.type === 'poll' && msg.pollOptions && msg.pollVoters && !msg.timestamp.hasOwnProperty('seconds')) {
-           if (msg.pollVoters[nickname]) {
-            toast({ title: "Already Voted", description: "You can only vote once per poll.", variant: "default" });
-            return msg;
+        if (msg.id === messageId && msg.type === 'poll' && msg.pollOptions && msg.pollVoters) { // Check if it's a local message
+           if (msg.pollVoters[nickname]) { // User has already voted in this poll
+             // If they clicked the option they already voted for, unvote (optional)
+             // if (msg.pollVoters[nickname] === optionIdToVoteFor) {
+             //   const updatedOptions = msg.pollOptions.map(opt => opt.id === optionIdToVoteFor ? { ...opt, voteCount: opt.voteCount - 1 } : opt);
+             //   const { [nickname]: _, ...remainingVoters } = msg.pollVoters;
+             //   return { ...msg, pollOptions: updatedOptions, pollVoters: remainingVoters };
+             // } else {
+                toast({ title: "Already Voted", description: "You can only vote once per poll.", variant: "default" });
+                return msg;
+             // }
           }
+          // New vote
           const updatedOptions = msg.pollOptions.map(opt => opt.id === optionIdToVoteFor ? { ...opt, voteCount: opt.voteCount + 1 } : opt);
           const updatedVoters = { ...msg.pollVoters, [nickname]: optionIdToVoteFor };
           return { ...msg, pollOptions: updatedOptions, pollVoters: updatedVoters };
@@ -345,14 +378,26 @@ export default function ChatRoomPage() {
     );
   }
 
-  // Helper to format Firestore Timestamp or ISO string
-  const formatTimestamp = (timestamp: Timestamp | string): string => {
-    if (typeof timestamp === 'string') {
-      return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formatTimestamp = (timestampValue: Timestamp | string | undefined | null): string => {
+    if (!timestampValue) return '...'; // Handle null or undefined early
+
+    // Check if it's a Firestore Timestamp object
+    if (typeof timestampValue === 'object' && 'toDate' in timestampValue && typeof (timestampValue as Timestamp).toDate === 'function') {
+      try {
+        return (timestampValue as Timestamp).toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } catch (e) {
+        console.error("Error formatting Firestore Timestamp:", e, timestampValue);
+        return 'error'; // Or some other error indicator
+      }
     }
-    if (timestamp && typeof timestamp.toDate === 'function') {
-      return timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // Check if it's an ISO string (likely for local messages)
+    if (typeof timestampValue === 'string') {
+      const date = new Date(timestampValue);
+      if (!isNaN(date.getTime())) { // Check if it's a valid date string
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
     }
+    // Fallback if the timestamp isn't fully resolved or recognized yet
     return 'sending...';
   };
 
@@ -384,18 +429,17 @@ export default function ChatRoomPage() {
             {isLoadingMessages && messages.length === 0 && (
                  <div className="text-center text-muted-foreground py-10">Loading messages...</div>
             )}
-            {!isLoadingMessages && messages.length === 0 && (
+            {!isLoadingMessages && messages.length === 0 && !isTypingBotMessage && (
                 <div className="text-center text-muted-foreground py-10">
-                    No messages yet. Start the conversation! Text messages are real-time.
+                    No messages yet. Start the conversation!
                 </div>
             )}
             {messages.map((msg) => {
               const isMyMessage = msg.nickname === nickname;
+              const isFashionPalMessage = msg.nickname === 'FashionPal';
               const userHasHeartedImage = msg.type === 'image' && msg.reactions?.some(r => r.nickname === nickname && r.emoji === '❤️');
-              const isFirestoreMessage = msg.timestamp && typeof msg.timestamp !== 'string' && msg.timestamp.hasOwnProperty('seconds');
-
-
-              if (msg.type === 'poll') { // Polls are local
+              
+              if (msg.type === 'poll') {
                 const userVotedOptionId = msg.pollVoters?.[nickname];
                 return (
                   <div key={msg.id} className={cn("flex items-end gap-2 max-w-[95%] sm:max-w-[85%]", isMyMessage ? "ml-auto flex-row-reverse" : "mr-auto flex-row")}>
@@ -428,11 +472,14 @@ export default function ChatRoomPage() {
               // Regular message (Firestore) or image (local)
               const heartReactions = msg.reactions?.filter(r => r.emoji === '❤️').length || 0;
               return (
-                <div key={msg.id} className={cn("flex items-end gap-2 max-w-[85%]", isMyMessage ? "ml-auto flex-row-reverse" : "mr-auto flex-row")}>
+                <div key={msg.id} className={cn("flex items-end gap-2 max-w-[85%]", (isMyMessage && !isFashionPalMessage) ? "ml-auto flex-row-reverse" : "mr-auto flex-row")}>
                   <User className="h-8 w-8 text-muted-foreground self-start shrink-0 rounded-full bg-background p-1 border" title={msg.nickname}/>
-                  <div className={cn("p-3 rounded-xl shadow-md", isMyMessage ? "bg-primary text-primary-foreground rounded-br-none" : "bg-card text-card-foreground rounded-bl-none border")}>
+                  <div className={cn("p-3 rounded-xl shadow-md", 
+                    (isMyMessage && !isFashionPalMessage) ? "bg-primary text-primary-foreground rounded-br-none" : 
+                    isFashionPalMessage ? "bg-accent/30 text-accent-foreground rounded-bl-none border border-accent/50" :
+                    "bg-card text-card-foreground rounded-bl-none border")}>
                     <p className="text-xs text-muted-foreground/80 mb-0.5">
-                      {isMyMessage ? "You" : msg.nickname} {msg.type === 'image' ? '(Image - Local)' : ''}
+                      {(isMyMessage && !isFashionPalMessage) ? "You" : msg.nickname} {msg.type === 'image' ? '(Image - Local)' : ''}
                       <span className="ml-2 text-xs text-muted-foreground/60">{formatTimestamp(msg.timestamp)}</span>
                     </p>
                     {msg.type === 'image' && msg.imageDataUri && (
@@ -441,7 +488,7 @@ export default function ChatRoomPage() {
                       </div>
                     )}
                     {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
-                    {msg.type === 'image' && ( // Local reactions on local images
+                    {msg.type === 'image' && (
                       <div className="mt-2 flex items-center">
                         <Button variant="ghost" size="sm" className={cn("p-1 h-auto", userHasHeartedImage ? "text-red-500" : "text-muted-foreground hover:text-red-500")} onClick={() => handleReaction(msg.id, '❤️')}>
                           <Heart className={cn("h-4 w-4", userHasHeartedImage ? "fill-red-500" : "")} />
@@ -453,12 +500,24 @@ export default function ChatRoomPage() {
                 </div>
               );
             })}
+            {isTypingBotMessage && (
+              <div className="flex items-end gap-2 max-w-[85%] mr-auto flex-row">
+                <User className="h-8 w-8 text-muted-foreground self-start shrink-0 rounded-full bg-background p-1 border" title="FashionPal"/>
+                <div className="p-3 rounded-xl shadow-md bg-accent/30 text-accent-foreground rounded-bl-none border border-accent/50">
+                  <p className="text-xs text-muted-foreground/80 mb-0.5">FashionPal</p>
+                  <div className="flex items-center space-x-1">
+                    <span className="text-sm">typing</span>
+                    <Loader2 className="h-3 w-3 animate-spin opacity-70" />
+                  </div>
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
 
         <CardFooter className="p-4 border-t bg-background flex flex-col items-start">
-          {isCreatingPoll && ( /* Poll form remains local */
+          {isCreatingPoll && (
             <form onSubmit={handleSendPoll} className="w-full mb-4 p-4 border rounded-lg shadow-sm bg-muted/50 space-y-4">
               <h3 className="text-lg font-semibold text-center">Create New Poll (Local)</h3>
               <div><Label htmlFor="poll-question">Poll Question</Label><Textarea id="poll-question" value={pollQuestionInput} onChange={(e) => setPollQuestionInput(e.target.value)} placeholder="What's your fashion question?" required className="mt-1 bg-background"/></div>
@@ -475,7 +534,7 @@ export default function ChatRoomPage() {
 
           {!isCreatingPoll && (
             <>
-            {selectedImagePreview && ( /* Image preview remains local */
+            {selectedImagePreview && (
                 <div className="mb-2 p-2 border rounded-md relative w-20 h-20 sm:w-24 sm:h-24">
                 <NextImage src={selectedImagePreview} alt="Selected preview" layout="fill" objectFit="cover" className="rounded-md" data-ai-hint="image preview"/>
                 <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/80" onClick={clearSelectedImage}><XCircle className="h-4 w-4" /></Button>
@@ -489,7 +548,7 @@ export default function ChatRoomPage() {
                 <Button variant="outline" size="icon" type="button" onClick={() => setIsCreatingPoll(true)} title="Create Poll (Local)">
                 <ListPlus className="h-5 w-5" />
                 </Button>
-                <Input ref={inputRef} value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} placeholder="Type your message (real-time)..." className="flex-1" autoComplete="off"/>
+                <Input ref={inputRef} value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} placeholder="Type your message..." className="flex-1" autoComplete="off"/>
                 <Button type="submit" size="icon" disabled={(!currentMessage.trim() && !selectedImageFile) || !nickname} aria-label="Send message"><Send className="h-5 w-5" /></Button>
             </form>
             </>
@@ -500,3 +559,4 @@ export default function ChatRoomPage() {
   );
 }
 
+    
