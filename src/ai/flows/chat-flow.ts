@@ -10,7 +10,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
-import type { MessageData, GenkitTextPart } from 'genkit'; // Keep this import even if not used by AI to avoid breaking changes if AI is re-enabled
+import type { MessageData } from 'genkit'; // Keep this import even if not used by AI to avoid breaking changes if AI is re-enabled
 
 // Schema for individual messages in the history from the client's perspective
 const ChatMessageSchema = z.object({
@@ -52,7 +52,19 @@ const chatWithBotFlow = ai.defineFlow(
   },
   async (input) => {
     const userInputNormalized = input.userInput.trim().toLowerCase();
-
+    const messages : MessageData[] = [];
+    if (input.history) {
+      messages.push(
+        ...input.history.map((msg) => ({
+          role: msg.sender === 'user' ? 'user' : 'model',
+          content: [{text : msg.text}],
+        }))
+      );
+    }
+    messages.push({
+      role: 'user',
+      content: [{text: input.userInput}],
+    });
     // Specific Q&A pairs
     if (userInputNormalized === 'hi') {
       return { aiResponse: "How can I help you?" };
