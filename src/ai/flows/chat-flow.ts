@@ -7,10 +7,10 @@
  * - ChatOutput - The return type for the chatWithBot function.       
  */
 
-import { ai } from '@/ai/genkit';
+
 import { z } from 'genkit';
 import type { MessageData } from 'genkit'; // Keep this import even if not used by AI to avoid breaking changes if AI is re-enabled
-
+import {googleAI} from '@genkit-ai/googleai';
 // Schema for individual messages in the history from the client's perspective
 const ChatMessageSchema = z.object({
   sender: z.enum(['user', 'ai']).describe("The sender of the message, either 'user' or 'ai'."),
@@ -34,7 +34,7 @@ export async function chatWithBot(input: ChatInput): Promise<ChatOutput> {
 
 // SYSTEM_INSTRUCTION is not used in this hardcoded version but kept for potential future re-enablement of AI
 const SYSTEM_INSTRUCTION = `You are AestheFit Assistant, a friendly, knowledgeable, and highly skilled personal stylist AI...`; // Shortened for clarity
-
+import { ai } from '@/ai/genkit';
 const chatWithBotFlow = ai.defineFlow(
   {
     name: 'chatWithBotFlow',
@@ -55,7 +55,7 @@ const chatWithBotFlow = ai.defineFlow(
     }
     messages.push({
       role: 'user',
-      content: [{ type: 'text', text: input.userInput }],
+      content: [{text: input.userInput }],
     });
 
     // Specific Q&A pairs
@@ -97,6 +97,7 @@ const chatWithBotFlow = ai.defineFlow(
       };
     } else {
       const result = await ai.chat({
+          model: 'googleai/gemini-2.0-flash',
           messages,
           systemInstruction: SYSTEM_INSTRUCTION,
         });
