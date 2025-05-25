@@ -7,7 +7,7 @@ import { Instagram, Facebook, Twitter } from 'lucide-react';
 
 const Footer: FC = () => {
   return (
-    <footer className="py-8 bg-muted/50 dark:bg-muted/20 border-t mt-auto"> {/* mt-auto helps ensure it's pushed down */}
+    <footer className="py-8 bg-muted/50 dark:bg-muted/20 border-t mt-auto absolute"> {/* mt-auto helps ensure it's pushed down */}
       <div className="container mx-auto px-4 md:px-8 flex flex-col md:flex-row justify-between items-center text-center md:text-left">
         <p className="text-sm text-muted-foreground">
           &copy; {new Date().getFullYear()} AestheFit. All rights reserved.
