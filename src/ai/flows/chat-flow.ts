@@ -49,14 +49,13 @@ const chatWithBotFlow = ai.defineFlow(
       messages.push(
         ...input.history.map((msg) => ({
           role: msg.sender === 'user' ? 'user' as const : 'model' as const,
-          content: [{ text: msg.text }],
+          content: [{ type: 'text', text: msg.text }],
         }))
       );
     }
-
     messages.push({
       role: 'user',
-      content: [{ text: input.userInput }],
+      content: [{ type: 'text', text: input.userInput }],
     });
 
     // Specific Q&A pairs
@@ -97,7 +96,11 @@ const chatWithBotFlow = ai.defineFlow(
         aiResponse: "Anytime! Let me know if you need more fashion tips 💁‍♀️",
       };
     } else {
-      return { aiResponse: "I don't understand that yet." };
+      const result = await ai.chat({
+          messages,
+          systemInstruction: SYSTEM_INSTRUCTION,
+        });
+      return { aiResponse: result.text };
     }
   }
 );
