@@ -1,107 +1,78 @@
-'use server';
-/**
- * @fileOverview AI Chatbot flow.
- *
- * - chatWithBot - A function that handles chatbot conversations.
- * - ChatInput - The input type for the chatWithBot function.
- * - ChatOutput - The return type for the chatWithBot function.       
- */
-
-
-import { z } from 'genkit';
-import type { MessageData } from 'genkit'; // Keep this import even if not used by AI to avoid breaking changes if AI is re-enabled
-import {googleAI} from '@genkit-ai/googleai';
-// Schema for individual messages in the history from the client's perspective
-const ChatMessageSchema = z.object({
-  sender: z.enum(['user', 'ai']).describe("The sender of the message, either 'user' or 'ai'."),
-  text: z.string().describe("The content of the message."),
-});
-
-const ChatInputSchema = z.object({
-  userInput: z.string().describe("The latest message from the user."),
-  history: z.array(ChatMessageSchema).optional().describe("The conversation history."),
-});
-export type ChatInput = z.infer<typeof ChatInputSchema>;
-
-const ChatOutputSchema = z.object({
-  aiResponse: z.string().describe("The AI's response to the user's message."),
-});
-export type ChatOutput = z.infer<typeof ChatOutputSchema>;
-
-export async function chatWithBot(input: ChatInput): Promise<ChatOutput> {
-  return chatWithBotFlow(input);
+// chat-flow.ts
+import 'dotenv/config';
+// import { curateOutfitFlow } from '@/ai/flows/curate-outfit';
+export interface ChatMessage {
+  sender: 'user' | 'ai';
+  text: string;
 }
 
-// SYSTEM_INSTRUCTION is not used in this hardcoded version but kept for potential future re-enablement of AI
-const SYSTEM_INSTRUCTION = `You are AestheFit Assistant, a friendly, knowledgeable, and highly skilled personal stylist AI...`; // Shortened for clarity
-import { ai } from '@/ai/genkit';
-const chatWithBotFlow = ai.defineFlow(
-  {
-    name: 'chatWithBotFlow',
-    inputSchema: ChatInputSchema,
-    outputSchema: ChatOutputSchema,
-  },
-  async (input) => {
-    const userInputNormalized = input.userInput.trim().toLowerCase();
-    const messages: MessageData[] = [];
+export interface ChatInput {
+  userInput: string;
+  history?: ChatMessage[];
+}
 
-    if (input.history) {
-      messages.push(
-        ...input.history.map((msg) => ({
-          role: msg.sender === 'user' ? 'user' as const : 'model' as const,
-          content: [{ type: 'text', text: msg.text }],
-        }))
-      );
-    }
-    messages.push({
-      role: 'user',
-      content: [{text: input.userInput }],
-    });
+export interface ChatOutput {
+  aiResponse: string;
+}
 
-    // Specific Q&A pairs
-    if (userInputNormalized === 'hi') {
-      return { aiResponse: "How can I help you?" };
-    } else if (userInputNormalized === "what should i wear for a wedding?") {
-      return {
-        aiResponse:
-          "For a wedding, consider wearing a formal or semi-formal outfit. A classy dress or a tailored jumpsuit works well. Avoid white unless it's specified in the dress code.",
-      };
-    } else if (userInputNormalized === "what's trending in fashion right now?") {
-      return {
-        aiResponse:
-          "Trends this season include oversized blazers, monochrome outfits, pastel tones, and statement accessories.",
-      };
-    } else if (userInputNormalized === "how do i style high-waisted jeans?") {
-      return {
-        aiResponse:
-          "Pair them with a crop top, a tucked-in blouse, or a fitted shirt. Add heels or sneakers depending on the occasion.",
-      };
-    } else if (userInputNormalized === "i have a date tonight, what should i wear?") {
-      return {
-        aiResponse:
-          "Choose something that makes you feel confident and comfortable. A midi dress or chic top with tailored pants is a great choice.",
-      };
-    } else if (userInputNormalized === "what should i wear to a beach party?") {
-      return {
-        aiResponse:
-          "Go for a flowy sundress or a stylish swimsuit with a cover-up and comfy sandals.",
-      };
-    } else if (userInputNormalized === "suggest an outfit for winter.") {
-      return {
-        aiResponse:
-          "Layer up with a cozy sweater, a long coat, skinny jeans, and ankle boots. Add a scarf and gloves for extra warmth.",
-      };
-    } else if (userInputNormalized === "thank you") {
-      return {
-        aiResponse: "Anytime! Let me know if you need more fashion tips 💁‍♀️",
-      };
-    } else {
-      const result = await ai.chat({
-          model: 'googleai/gemini-2.0-flash',
-          messages,
-          systemInstruction: SYSTEM_INSTRUCTION,
-        });
-      return { aiResponse: result.text };
-    }
+ function buildMessages(input: ChatInput) {
+  const messages = input.history?.map((msg) => ({
+    role: msg.sender === 'user' ? 'user' : 'assistant',
+    content: msg.text,
+  })) || [];
+
+  messages.push({
+    role: 'user',
+    content: input.userInput,
+  });
+
+  return messages;
+}
+
+ function extractResponse(data: any): ChatOutput {
+  return {
+    aiResponse: data.choices?.[0]?.message?.content || "Sorry, I didn't catch that.",
+  };
+}
+
+export async function chatFlow(input: ChatInput): Promise<ChatOutput> {
+ // const apikey = process.env.OPENROUTER_API_KEY;
+  //if (!apikey) {
+   /* throw new Error("OPENROUTER_API_KEY is not set");
+  }*/
+  const SYSTEM_INSTRUCTION = `You are AestheFit Assistant, a friendly and knowledgeable personal stylist. 
+  You provide concise, trendy, and personalized fashion advice based on the user's input. 
+  Be encouraging, clear, and avoid long paragraphs.`;
+
+
+
+  const messages = [
+    {
+      role: 'system',
+      content: SYSTEM_INSTRUCTION,
+    },
+    ...buildMessages(input),
+  ]
+  
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer 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",
+    },
+    body: JSON.stringify({
+      model: "meta-llama/llama-3.1-70b-instruct",
+      messages,
+      max_tokens: 300,
+      temperature: 0.7,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(`Error: ${error}`);
   }
-);
+
+  const data = await response.json();
+  return extractResponse(data);
+}

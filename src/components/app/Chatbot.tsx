@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/sheet";
 import { MessageSquare, Send, Loader2, Bot, User } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { chatWithBot, type ChatInput } from '@/ai/flows/chat-flow';
+import { chatFlow, type ChatInput } from '@/ai/flows/chat-flow';
 import { useToast } from "@/hooks/use-toast";
 
 interface Message {
@@ -84,7 +84,7 @@ export default function Chatbot() {
     setIsLoading(true);
 
     try {
-      const result = await chatWithBot({
+      const result = await chatFlow({
         userInput: currentInput,
         history: historyForAI.length > 0 ? historyForAI : undefined, 
       });
@@ -121,7 +121,7 @@ export default function Chatbot() {
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
         <Button
-          variant="primary"
+          variant="default"
           size="icon"
           className="fixed bottom-6 right-6 md:bottom-8 md:right-8 rounded-full w-14 h-14 shadow-xl z-50 bg-primary text-primary-foreground hover:bg-primary/90"
           aria-label="Open Chat"
